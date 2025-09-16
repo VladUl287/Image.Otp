@@ -1,0 +1,269 @@
+﻿using Image.Otp.Primitives;
+using System.Runtime.CompilerServices;
+using Image.Otp.Models.Jpeg;
+using Image.Otp.Parsers;
+using Image.Otp.SixLabors;
+using System.Runtime.InteropServices;
+using Image.Otp.Pixels;
+using Image.Otp.Helpers;
+using static Image.Otp.SixLabors.JpegMcuDecoder;
+
+namespace Image.Otp.Extensions;
+
+public static class ImageExtensions
+{
+    public static Image<T> Load<T>(string path) where T : unmanaged, IPixel<T>
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        return LoadFromMemory<T>(bytes);
+    }
+
+    public static Image<T> LoadFromMemory<T>(byte[] fileData) where T : unmanaged, IPixel<T>
+    {
+        using var ms = new MemoryStream(fileData);
+        using var br = new BinaryReader(ms);
+
+        var signature = System.Text.Encoding.ASCII.GetString(br.ReadBytes(2));
+        ms.Position = 0;
+
+        const string bmSignature = "BM";
+
+        return signature switch
+        {
+            bmSignature => LoadBmp<T>(br),
+            //_ when IsPng(fileData) => LoadPng(br),
+            _ when IsJpeg(fileData) => LoadJpeg<T>(fileData),
+            _ => throw new NotSupportedException("Unsupported image format")
+        };
+    }
+
+    private unsafe static Image<T> LoadBmp<T>(BinaryReader br) where T : unmanaged
+    {
+        // BMP Header (54 bytes)
+        br.ReadBytes(14); // Skip file header
+        int headerSize = BitConverter.ToInt32(br.ReadBytes(4));
+        int width = BitConverter.ToInt32(br.ReadBytes(4));
+        int height = BitConverter.ToInt32(br.ReadBytes(4));
+        br.ReadBytes(2);  // Skip planes
+        int bitsPerPixel = BitConverter.ToInt16(br.ReadBytes(2));
+        br.ReadBytes(headerSize - 24); // Skip remaining header
+
+        if (bitsPerPixel != 24 && bitsPerPixel != 32)
+            throw new NotSupportedException("Only 24/32bpp BMP supported");
+
+        var image = new Image<T>(width, Math.Abs(height));
+        bool topDown = height < 0;
+        height = Math.Abs(height);
+
+        // Pixel data (BGR/BGRA format)
+        int bytesPerPixel = bitsPerPixel / 8;
+        int rowSize = (width * bytesPerPixel + 3) & ~3; // 4-byte aligned
+
+        fixed (T* dstPtr = &image.Pixels[0])
+        {
+            for (int y = 0; y < height; y++)
+            {
+                int dstY = topDown ? y : height - 1 - y;
+                byte[] rowData = br.ReadBytes(rowSize);
+
+                fixed (byte* srcPtr = rowData)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        int srcPos = x * bytesPerPixel;
+                        int dstPos = dstY * width + x;
+
+                        //if (typeof(T) == typeof(Rgb24))
+                        //{
+                        //    ((Rgb24*)dstPtr)[dstPos] = new Rgb24(
+                        //        srcPtr[srcPos + 2], // R
+                        //        srcPtr[srcPos + 1], // G
+                        //        srcPtr[srcPos + 0]  // B
+                        //    );
+                        //}
+                        if (typeof(T) == typeof(Rgba32))
+                        {
+                            byte a = bytesPerPixel == 4 ? srcPtr[srcPos + 3] : (byte)255;
+                            ((Rgba32*)dstPtr)[dstPos] = new Rgba32(
+                                srcPtr[srcPos + 2], // R
+                                srcPtr[srcPos + 1], // G
+                                srcPtr[srcPos + 0], // B
+                                a                  // A
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        return image;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsJpeg(byte[] data) => data.Length > 2 && data[0] == 0xFF && data[1] == 0xD8;
+
+    private unsafe static Image<T> LoadJpeg<T>(byte[] bytes) where T : unmanaged, IPixel<T>
+    {
+        List<JpegSegment> segments = JpegParser.ParseSegmentsWithRestartMarkers(bytes);
+
+        Dictionary<byte, QuantizationTable> qTables = JpegTableDecoder.ParseDqtSegments(segments);
+        List<HuffmanTable> hTables = JpegTableDecoder.ParseDhtSegments(segments);
+
+        JpegSegment frameSegment = segments.First(s => s.Marker == 0xC0 || s.Marker == 0xC2);
+        var progressive = frameSegment.Marker == 0xC2;
+        FrameInfo frameInfo = JpegTableDecoder.ParseSofSegment(frameSegment);
+
+        var huffDc = new Dictionary<byte, CanonicalHuffmanTable>();
+        var huffAc = new Dictionary<byte, CanonicalHuffmanTable>();
+        foreach (var ht in hTables)
+        {
+            var table = HuffmanTableLogic.BuildCanonical(ht.CodeLengths, ht.Symbols);
+            if (ht.Class == 0) huffDc[ht.Id] = table;
+            else huffAc[ht.Id] = table;
+        }
+
+        var driData = segments.FirstOrDefault(c => c.Marker == 221)?.Data;
+        var restartInterval = 0;
+        if (driData is not null)
+        {
+            restartInterval = (driData[0] << 8) | driData[1];
+        }
+
+        byte[] rgba = [];
+        if (progressive)
+        {
+            var sosDhtDataSegments = segments.Where(s => new byte[] { 0xDA, 0x00, 0xC4 }.Contains(s.Marker)).ToList();
+
+            var currentTables = new Dictionary<(int Class, int Id), HuffmanTable>();
+
+            List<MCUBlock>? currentMcus = null;
+            ScanInfo? currentScanInfo = null;
+            for (int i = 0; i < sosDhtDataSegments.Count; i++)
+            {
+                var segment = sosDhtDataSegments[i];
+
+                if (segment.Marker == 0xC4)
+                {
+                    var dhtTable = JpegTableDecoder.ParseDhtSegments([segment]).First();
+                    currentTables[(dhtTable.Class, dhtTable.Id)] = dhtTable;
+                }
+                if (segment.Marker == 0xDA)
+                {
+                    var sosSegment = segment;
+                    currentScanInfo = JpegTableDecoder.ParseSosSegment(sosSegment);
+                }
+                if (segment.Marker == 0x00 && currentScanInfo is not null)
+                {
+                    var dataSegment = segment;
+
+                    bool isDcOnlyScan = (currentScanInfo.Ss == 0 && currentScanInfo.Se == 0);
+
+                    huffDc.Clear();
+                    huffAc.Clear();
+
+                    foreach (var component in currentScanInfo.Components)
+                    {
+                        if (!currentTables.TryGetValue((0, component.DcHuffmanTableId), out var dcTable))
+                            throw new InvalidOperationException($"DC Huffman table {component.DcHuffmanTableId} not found");
+
+                        if (!currentTables.TryGetValue((1, component.AcHuffmanTableId), out var acTable) && !isDcOnlyScan)
+                        {
+                            throw new InvalidOperationException($"AC Huffman table {component.AcHuffmanTableId} not found");
+                        }
+
+                        huffDc[component.DcHuffmanTableId] = HuffmanTableLogic.BuildCanonical(dcTable.CodeLengths, dcTable.Symbols);
+                        if (acTable is not null)
+                        {
+                            huffAc[component.AcHuffmanTableId] = HuffmanTableLogic.BuildCanonical(acTable.CodeLengths, acTable.Symbols);
+                        }
+                    }
+
+                    currentMcus = JpegMcuDecoder.DecodeScanToBlocksProgressive(
+                        dataSegment.Data, frameInfo, currentScanInfo,
+                        huffDc, huffAc, restartInterval, currentMcus);
+                }
+            }
+
+            foreach (var mcu in currentMcus)
+            {
+                foreach (var blocks in mcu.ComponentBlocks)
+                {
+                    for (int i = 0; i < blocks.Value.Count; i++)
+                    {
+                        var block = blocks.Value[i];
+                        blocks.Value[i] = JpegDecoderHelpers.NaturalToZigzag(blocks.Value[i]);
+                    }
+                }
+            }
+
+            rgba = JpegProcessor.ProcessMCUBlocks(frameInfo, currentMcus, qTables);
+        }
+        else
+        {
+            var scanInfo = JpegTableDecoder.ParseSosSegment(segments.First(s => s.Marker == 0xDA));
+            var segment = segments.Single(s => s.Marker == 0x00);
+            var mcus = JpegMcuDecoder.DecodeScanToBlocks(
+                segment.Data,
+                frameInfo,
+                scanInfo,
+                qTables,
+                huffDc,
+                huffAc,
+                restartInterval);
+
+            rgba = JpegProcessor.ProcessMCUBlocks(frameInfo, scanInfo, mcus, qTables);
+        }
+
+        var width = frameInfo.Width;
+        var height = frameInfo.Height;
+
+        var image = new Image<T>(width, height);
+
+        var processor = PixelProcessorFactory.GetProcessor<T>();
+
+        int bytesPerPixel = Marshal.SizeOf<T>();
+        var sourceBytesPerPixel = bytesPerPixel;
+
+        fixed (T* dstPtr = &image.Pixels[0])
+        {
+            fixed (byte* srcPtr = rgba)
+            {
+                int sourceStride = width * bytesPerPixel; // Assuming source has same layout
+
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        int srcPos = y * sourceStride + x * sourceBytesPerPixel;
+                        int dstPos = y * width + x;
+
+                        processor.ProcessPixel(srcPtr, srcPos, dstPtr, dstPos, sourceBytesPerPixel);
+                    }
+                }
+            }
+        }
+
+        return image;
+    }
+
+    // Alternative method using MemoryMarshal for better performance
+    public static void FillFromByteArrayFast(this Image<Rgba32> image, byte[] rgbaData)
+    {
+        if (rgbaData.Length < image.Width * image.Height * 4)
+        {
+            throw new ArgumentException("Byte array is too small for the image dimensions");
+        }
+
+        var pixelSpan = MemoryMarshal.Cast<Rgba32, byte>(image.Pixels);
+        rgbaData.CopyTo(pixelSpan);
+        //rgbaData.AsSpan(0, pixelSpan.Length).CopyTo(pixelSpan);
+    }
+
+    // Method to create a new image from byte array
+    public static Image<Rgba32> CreateFromByteArray(int width, int height, byte[] rgbaData)
+    {
+        var image = new Image<Rgba32>(width, height);
+        image.FillFromByteArrayFast(rgbaData);
+        return image;
+    }
+}

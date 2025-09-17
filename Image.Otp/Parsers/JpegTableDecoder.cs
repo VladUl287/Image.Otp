@@ -99,7 +99,7 @@ public static class JpegTableDecoder
             Precision = precision, // Include precision in output
             Width = width,
             Height = height,
-            Components = components
+            Components = components.ToArray()
         };
     }
 
@@ -236,7 +236,6 @@ public static class JpegTableDecoder
 
                 const int valueCount = 64;
                 var raw = new ushort[valueCount];
-                int bytesNeeded = valueCount * (pq == 0 ? 1 : 2);
 
                 // read raw (zig-zag order)
                 if (pq == 0)

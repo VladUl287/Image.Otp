@@ -7,6 +7,10 @@ using System.Runtime.InteropServices;
 using Image.Otp.Pixels;
 using Image.Otp.Helpers;
 using static Image.Otp.SixLabors.JpegMcuDecoder;
+using Image.Otp.Enums;
+using Image.Otp.Constants;
+using System.Buffers;
+using System;
 
 namespace Image.Otp.Extensions;
 
@@ -102,16 +106,356 @@ public static class ImageExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsJpeg(byte[] data) => data.Length > 2 && data[0] == 0xFF && data[1] == 0xD8;
 
+    public static Image<T> LoadJpegBase<T>(string path) where T : unmanaged, IPixel<T>
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        return LoadJpeg<T>(bytes);
+    }
+
+    public static Image<T> LoadJpegMemory<T>(string path) where T : unmanaged, IPixel<T>
+    {
+        using var fileStream = new FileStream(path, FileMode.Open);
+        return LoadJpeg<T>(fileStream);
+    }
+
+    private unsafe static Image<T> LoadJpeg<T>(Stream stream) where T : unmanaged, IPixel<T>
+    {
+        var combiner = new Combiner();
+
+        while (stream.CanRead)
+        {
+            var byteRead = stream.ReadByte();
+
+            if (byteRead == JpegMarkers.FF)
+            {
+                byteRead = stream.ReadByte();
+
+                if (byteRead == JpegMarkers.EOI)
+                {
+                    break;
+                }
+
+                if (byteRead == JpegMarkers.OO)
+                {
+                    continue;
+                }
+
+                if (byteRead >= JpegMarkers.D0 && byteRead <= JpegMarkers.D7)
+                {
+                    continue;
+                }
+
+                if (JpegMarkers.HasLengthData(byteRead))
+                {
+                    var firstPart = stream.ReadByte();
+                    var secondPart = stream.ReadByte();
+
+                    //int length = (bytes[i + 2] << 8) | bytes[i + 3];
+                    int length = (firstPart * 256) | secondPart;
+                    length -= 2;
+
+                    ProcessMarker(stream, byteRead, length, combiner);
+                }
+            }
+        }
+
+        return default;
+    }
+
+    private sealed class Combiner
+    {
+        public FrameInfo FrameInfo { get; set; }
+        public ScanInfo ScanInfo { get; set; }
+
+        public Dictionary<byte, QuantizationTable> QuantizationTables = [];
+
+        public List<HuffmanTable> HuffmanTables = [];
+
+    }
+
+    private static void ProcessMarker(Stream stream, int marker, int length, Combiner combiner)
+    {
+        var endPosition = stream.Position + length;
+        switch (marker)
+        {
+            case JpegMarkers.DQT:
+                ProcessDQT(stream, combiner, endPosition);
+                break;
+            case JpegMarkers.SOS:
+                ProcessSOS(stream, length, combiner);
+                break;
+            case JpegMarkers.DRI:
+                break;
+            case JpegMarkers.DHT:
+                ParseDhtSegments(stream, endPosition, combiner);
+                break;
+            case JpegMarkers.SOF0:
+            case JpegMarkers.SOF2:
+                ProcessSOF(stream, marker, length, combiner);
+                break;
+            default:
+                stream.Seek(length, SeekOrigin.Current);
+                break;
+        }
+    }
+
+    private static void ParseDhtSegments(Stream stream, long endPosition, Combiner combiner)
+    {
+        while (stream.Position < endPosition)
+        {
+            var tcTh = stream.ReadByte();
+            var tc = (byte)((tcTh >> 4) & 0x0F);
+            var th = (byte)(tcTh & 0x0F);
+
+            const int CodeLengths = 16;
+            var lengths = new byte[CodeLengths];
+            stream.ReadExactly(lengths, 0, CodeLengths);
+
+            int symbolCount = 0;
+            for (int i = 0; i < CodeLengths; i++)
+                symbolCount += lengths[i];
+
+            var symbols = new byte[symbolCount];
+            stream.ReadExactly(symbols, 0, symbolCount);
+
+            combiner.HuffmanTables.Add(new HuffmanTable
+            {
+                Class = tc,
+                Id = th,
+                CodeLengths = lengths,
+                Symbols = symbols
+            });
+        }
+    }
+
+    private static void ProcessSOS(Stream stream, int length, Combiner combiner)
+    {
+        if (length < 6)
+            throw new InvalidDataException("SOS segment too short.");
+
+        var pos = 0;
+        var numComponents = stream.ReadByte();
+
+        // Validate component count
+        if (numComponents < 1 || numComponents > 4)
+            throw new InvalidDataException($"Invalid number of components: {numComponents}");
+
+        // Validate segment length: 1 byte (numComponents) + 2*numComponents + 3 bytes (Ss, Se, AhAl)
+        if (length != 1 + 2 * numComponents + 3)
+            throw new InvalidDataException("SOS segment length mismatch.");
+
+        var components = new List<ScanComponent>();
+        for (int i = 0; i < numComponents; i++)
+        {
+            if (pos + 1 >= length)
+                throw new InvalidDataException("Unexpected end of SOS segment.");
+
+            var componentId = (byte)stream.ReadByte();
+            var huffmanTableIds = (byte)stream.ReadByte();
+            components.Add(new ScanComponent
+            {
+                ComponentId = componentId,
+                DcHuffmanTableId = (byte)(huffmanTableIds >> 4),
+                AcHuffmanTableId = (byte)(huffmanTableIds & 0x0F)
+            });
+            pos++;
+        }
+
+        // Read spectral parameters
+        byte ss = (byte)stream.ReadByte();
+        byte se = (byte)stream.ReadByte();
+        byte ahAl = (byte)stream.ReadByte();
+        byte ah = (byte)(ahAl >> 4);
+        byte al = (byte)(ahAl & 0x0F);
+
+        var data = new List<byte>();
+        while (stream.CanRead)
+        {
+            var byteRead = stream.ReadByte();
+
+            if (byteRead == JpegMarkers.FF)
+            {
+                byteRead = stream.ReadByte();
+
+                if (byteRead == JpegMarkers.EOI)
+                {
+                    stream.Position -= 2;
+                    break;
+                }
+
+                if (byteRead == JpegMarkers.OO)
+                    continue;
+
+                if (byteRead >= JpegMarkers.D0 && byteRead <= JpegMarkers.D7)
+                    continue;
+
+                break;
+            }
+
+            data.Add((byte)byteRead);
+        }
+
+        combiner.ScanInfo = new ScanInfo
+        {
+            Components = components,
+            Ss = ss,
+            Se = se,
+            Ah = ah,
+            Al = al,
+            Data = [.. data]
+        };
+    }
+
+    private static void ProcessSOF(Stream stream, int marker, int length, Combiner combiner)
+    {
+        //TODO: Expand valid SOF markers to include all standard SOF markers
+        if (marker < 0xC0 || marker > 0xCF || marker == 0xC4 || marker == 0xC8 || marker == 0xCC)
+            throw new InvalidDataException("Invalid SOF marker.");
+
+        //TODO: Verify minimum length: precision(1) + dimensions(4) + numComponents(1) + components*3
+        if (length < 6)
+            throw new InvalidDataException("SOF segment too short.");
+
+        var precision = (byte)stream.ReadByte(); // Read precision (usually 8)
+
+        var firstPart = stream.ReadByte();
+        var secondPart = stream.ReadByte();
+        //TODO: int height = (seg.Data[pos++] << 8) | seg.Data[pos++];
+        int height = (firstPart * 256) | secondPart;
+
+        firstPart = stream.ReadByte();
+        secondPart = stream.ReadByte();
+        //TODO: int width = (seg.Data[pos++] << 8) | seg.Data[pos++];
+        int width = (firstPart * 256) | secondPart;
+
+        var numComponents = stream.ReadByte();
+        //TODO: Check if there's enough data for all components
+        if (length < 6 + 3 * numComponents)
+            throw new InvalidDataException("SOF segment too short for components.");
+
+        var components = new ComponentInfo[numComponents];
+        for (int i = 0; i < numComponents; i++)
+        {
+            var id = (byte)stream.ReadByte();
+            var samplingFactor = (byte)stream.ReadByte();
+            components[i] = new ComponentInfo
+            {
+                Id = id,
+                SamplingFactor = samplingFactor,
+                HorizontalSampling = (byte)(samplingFactor >> 4),   // Upper 4 bits
+                VerticalSampling = (byte)(samplingFactor & 0x0F),   // Lower 4 bits
+                QuantizationTableId = (byte)stream.ReadByte()
+            };
+        }
+
+        var frameInfo = new FrameInfo
+        {
+            Precision = precision, // Include precision in output
+            Width = width,
+            Height = height,
+            Components = components
+        };
+
+        combiner.FrameInfo = frameInfo;
+    }
+
+    private static void ProcessDQT(Stream stream, Combiner combiner, long endPosition)
+    {
+        var tables = combiner.QuantizationTables;
+
+        while (stream.Position < endPosition)
+        {
+            var pqTq = stream.ReadByte();
+
+            var pq = (pqTq >> 4) & 0x0F; // precision: 0 = 8-bit, 1 = 16-bit
+            var tq = (byte)(pqTq & 0x0F); // table id
+
+            // Validate table ID
+            if (tq > 3)
+                throw new InvalidDataException($"DQT table ID {tq} is invalid. Must be 0-3.");
+
+            if (pq != 0 && pq != 1)
+                throw new InvalidDataException($"Unsupported DQT precision {pq} in table {tq}.");
+
+            const int DqtTableSize = 64;
+            var raw = new ushort[DqtTableSize];
+            //var raw = ArrayPool<ushort>.Shared.Rent(DqtTableSize);
+
+            if (pq == 0)
+            {
+                for (int i = 0; i < DqtTableSize; i++)
+                    raw[i] = (ushort)stream.ReadByte();
+            }
+            else
+            {
+                for (int i = 0; i < DqtTableSize; i++)
+                {
+                    var firstPart = stream.ReadByte();
+                    var secondPart = stream.ReadByte();
+                    //raw[i] = (ushort)((data[pos] << 8) | data[pos + 1]);
+                    raw[i] = (ushort)((firstPart * 256) | secondPart);
+                }
+            }
+
+            tables[tq] = new QuantizationTable
+            {
+                Id = tq,
+                Values = raw
+            };
+
+            //var natural = JpegDecoderHelpers.NaturalToZigzag(raw);
+            //ArrayPool<ushort>.Shared.Return(raw);
+
+            //tables[tq] = new QuantizationTable
+            //{
+            //    Id = tq,
+            //    Values = natural
+            //};
+        }
+    }
+
     private unsafe static Image<T> LoadJpeg<T>(byte[] bytes) where T : unmanaged, IPixel<T>
     {
         List<JpegSegment> segments = JpegParser.ParseSegmentsWithRestartMarkers(bytes);
 
         Dictionary<byte, QuantizationTable> qTables = JpegTableDecoder.ParseDqtSegments(segments);
+
+        foreach (var kv in qTables)
+        {
+            Console.WriteLine($"DQT id={kv.Key}");
+            var t = kv.Value;
+            for (int i = 0; i < 64; i++)
+            {
+                Console.Write(t.Values[i] + (i % 8 == 7 ? "\n" : " "));
+            }
+        }
+
         List<HuffmanTable> hTables = JpegTableDecoder.ParseDhtSegments(segments);
+
+        foreach (var ht in hTables.OrderBy(c => c.Class))
+        {
+            Console.WriteLine($"DHT class={ht.Class} id={ht.Id}");
+            Console.Write("bits: ");
+            for (int i = 1; i <= 16; i++) Console.Write(ht.CodeLengths[i - 1] + " ");
+            Console.WriteLine();
+            Console.Write("vals: ");
+            foreach (var s in ht.Symbols) Console.Write(s.ToString("X2") + " ");
+            Console.WriteLine();
+        }
 
         JpegSegment frameSegment = segments.First(s => s.Marker == 0xC0 || s.Marker == 0xC2);
         var progressive = frameSegment.Marker == 0xC2;
         FrameInfo frameInfo = JpegTableDecoder.ParseSofSegment(frameSegment);
+
+        var scanInfoss = JpegTableDecoder.ParseSosSegment(segments.First(s => s.Marker == 0xDA));
+
+        for (int i = 0; i < frameInfo.Components.Length; i++)
+        {
+            var c = frameInfo.Components[i];
+            var component = scanInfoss.Components.First(a => a.ComponentId == c.Id);
+            Console.WriteLine($" comp {i}: id={c.Id} hsamp={c.HorizontalSampling} " +
+                $"vsamp={c.VerticalSampling} quant={c.QuantizationTableId} dc_tbl={component.DcHuffmanTableId} ac_tbl={component.AcHuffmanTableId}");
+        }
 
         var huffDc = new Dictionary<byte, CanonicalHuffmanTable>();
         var huffAc = new Dictionary<byte, CanonicalHuffmanTable>();

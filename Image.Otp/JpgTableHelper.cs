@@ -38,12 +38,16 @@ public static class JpegDecoderHelpers
         return zz;
     }
 
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="natural"></param>
+    /// <returns>New array with zigzag order</returns>
     public static ushort[] NaturalToZigzag(ushort[] natural)
     {
         var zz = new ushort[64];
         for (var i = 0; i < 64; i++)
         {
-            // ZigZag[pos] = naturalIndex for zigzag position pos
             zz[i] = natural[ZigZag[i]];
         }
         return zz;

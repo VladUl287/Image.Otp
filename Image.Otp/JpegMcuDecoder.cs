@@ -209,8 +209,6 @@ public static class JpegMcuDecoder
     }
 
     private static readonly Dictionary<byte, int> dcPredictor = new();
-
-
     public static List<MCUBlock> DecodeScanToBlocksProgressive(
         byte[] compressed,
         FrameInfo frame,
@@ -383,111 +381,6 @@ public static class JpegMcuDecoder
         zz[0] = (short)dcVal;
     }
 
-    private static void ProcessAcRefinementScan(ScanInfo scan, CustomBitReader bitReader, short[] zz, CanonicalHuffmanTable acTable)
-    {
-        int k = scan.Ss;
-
-        while (k <= scan.Se)
-        {
-            int symbol = DecodeHuffmanSymbol(bitReader, acTable);
-            if (symbol < 0)
-            {
-                throw new EndOfStreamException("Marker or EOF encountered while decoding AC.");
-            }
-            if (symbol == 0x00) // EOB
-            {
-                break;
-            }
-            else if (symbol == 0xF0) // ZRL
-            {
-                k += 16;
-                continue;
-            }
-            else
-            {
-                int run = (symbol >> 4) & 0x0F;
-                int eobRun = 0;
-
-                // Check if this is an EOB run symbol (0x80-0x8F)
-                if ((symbol & 0xF0) == 0x80)
-                {
-                    eobRun = symbol & 0x0F;
-                    if (eobRun == 0x00)
-                    {
-                        // EOB run of 16 coefficients
-                        eobRun = 16;
-                    }
-                    else if (eobRun == 0x0F)
-                    {
-                        // EOB run of more than 16 coefficients - read additional bits
-                        int additionalBits = bitReader.ReadBits(8);
-                        eobRun = 16 + additionalBits;
-                    }
-                    else
-                    {
-                        // EOB run of 1-15 coefficients
-                        eobRun = eobRun;
-                    }
-
-                    // Skip the specified number of coefficients
-                    k += eobRun;
-                    continue;
-                }
-
-                // Regular AC coefficient with run length
-                k += run;
-                if (k > scan.Se) break;
-
-                // Read refinement bit
-                int bit = bitReader.ReadBit();
-                if (bit == 1)
-                {
-                    zz[k] |= (short)(1 << scan.Al);
-                }
-                k++;
-            }
-        }
-    }
-
-    //private static void ProcessAcRefinementScan(ScanInfo scan, CustomBitReader bitReader, short[] zz, CanonicalHuffmanTable acTable)
-    //{
-    //    int k = scan.Ss;
-
-    //    while (k <= scan.Se)
-    //    {
-    //        int symbol = DecodeHuffmanSymbol(bitReader, acTable);
-    //        if (symbol < 0)
-    //        {
-    //            throw new EndOfStreamException("Marker or EOF encountered while decoding AC.");
-    //            //break;
-    //        }
-    //        if (symbol == 0x00) // EOB
-    //        {
-    //            break;
-    //        }
-    //        else if (symbol == 0xF0) // ZRL
-    //        {
-    //            k += 16;
-    //            continue;
-    //        }
-    //        else
-    //        {
-    //            int run = (symbol >> 4) & 0x0F;
-    //            k += run;
-    //            if (k > scan.Se) break;
-
-    //            // Read refinement bit
-    //            int bit = bitReader.ReadBit();
-    //            if (bit == 1)
-    //            {
-    //                zz[k] |= (short)(1 << scan.Al);
-    //            }
-    //            k++;
-    //        }
-    //    }
-    //}
-
-
     private static int DecodeACsProgressiveSubsequentPerBlock(ScanInfo scan, CustomBitReader bitReader, short[] zz, CanonicalHuffmanTable acTable, int lengthEOBRun)
     {
         int Ss = scan.Ss, Se = scan.Se, Al = scan.Al;
@@ -624,50 +517,6 @@ public static class JpegMcuDecoder
         return 0;
     }
 
-    private static void ProcessAcFirstScan(ScanInfo scan, CustomBitReader bitReader, short[] zz, CanonicalHuffmanTable acTable)
-    {
-        int k = scan.Ss;
-        while (k <= scan.Se)
-        {
-            int symbol = DecodeHuffmanSymbol(bitReader, acTable);
-            if (symbol < 0)
-            {
-                throw new EndOfStreamException("Marker or EOF encountered while decoding AC.");
-            }
-            if (symbol == 0x00) // EOB
-            {
-                break;
-            }
-            else if (symbol == 0xF0) // ZRL
-            {
-                k += 16;
-                continue;
-            }
-            else
-            {
-                int run = (symbol >> 4) & 0x0F;
-                int size = symbol & 0x0F;
-                k += run;
-                if (k > scan.Se) break;
-
-                int bits = 0;
-                if (size > 0)
-                {
-                    bits = bitReader.ReadBits(size);
-                    if (bits < 0)
-                    {
-                        //break;
-                        throw new EndOfStreamException("EOF/marker while reading AC bits.");
-                    }
-                }
-                int level = JpegDecoderHelpers.ExtendSign(bits, size);
-                zz[k] = (short)(level << scan.Al);
-                k++;
-            }
-        }
-    }
-
-    // Public method requested
     public static List<MCUBlock> DecodeScanToBlocks(
         byte[] compressed,
         FrameInfo frame,

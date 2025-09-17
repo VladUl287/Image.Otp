@@ -4,6 +4,7 @@ namespace Image.Otp.SixLabors;
 
 public static class JpegProcessor
 {
+
     public static byte[] ProcessMCUBlocks(
     FrameInfo frameInfo,
     List<MCUBlock> compressedData,
@@ -209,12 +210,12 @@ public static class JpegProcessor
 
         return output;
     }
-    // Public entry: assemble MCUs into an RGBA byte array (row-major, 4 bytes per pixel)
+
     public static byte[] ProcessMCUBlocks(
-        FrameInfo frameInfo,
-        ScanInfo scanInfo,
-        List<MCUBlock> compressedData,
-        Dictionary<byte, QuantizationTable> qTables)
+       FrameInfo frameInfo,
+       ScanInfo scanInfo,
+       List<MCUBlock> compressedData,
+       Dictionary<byte, QuantizationTable> qTables)
     {
         if (frameInfo == null) throw new ArgumentNullException(nameof(frameInfo));
         if (scanInfo == null) throw new ArgumentNullException(nameof(scanInfo));
@@ -260,7 +261,7 @@ public static class JpegProcessor
             foreach (var scanComp in scanInfo.Components)
             {
                 // Find component info in frame
-                ComponentInfo compInfo = frameInfo.Components.Find(c => c.Id == scanComp.ComponentId);
+                ComponentInfo compInfo = frameInfo.Components.FirstOrDefault(c => c.Id == scanComp.ComponentId);
                 if (compInfo == null) continue; // skip if not found
 
                 // Determine how many blocks horizontally and vertically for this component inside MCU
@@ -394,7 +395,7 @@ public static class JpegProcessor
                 double Yd = yVal;
                 double Cbd = cbVal - 128.0;
                 double Crd = crVal - 128.0;
-                
+
                 int r = (int)Math.Round(Yd + 1.402 * Crd);
                 int g = (int)Math.Round(Yd - 0.344136 * Cbd - 0.714136 * Crd);
                 int b = (int)Math.Round(Yd + 1.772 * Cbd);
@@ -417,9 +418,6 @@ public static class JpegProcessor
         return output;
     }
 
-    // -----------------------
-    // Helper: Dequantize block
-    // -----------------------
     private static double[] DequantizeBlock(short[] quantizedCoeffs, QuantizationTable qTable)
     {
         // quantizedCoeffs is in zig-zag or natural order? We'll assume natural-order 8x8 (0..63) since DecodedMCU likely provided natural order.
@@ -433,9 +431,6 @@ public static class JpegProcessor
         return outBlock;
     }
 
-    // -----------------------
-    // Helper: Inverse DCT 8x8 (simple straightforward implementation)
-    // -----------------------
     private static double[] InverseDCT8x8(double[] block)
     {
         // Implement basic separable IDCT using the naive formula for clarity.
@@ -484,10 +479,6 @@ public static class JpegProcessor
         return v;
     }
 
-    // -----------------------
-    // Small per-MCU accumulator: collects component samples per pixel.
-    // Implemented as a minimal static helper class for clarity.
-    // -----------------------
     private static class PerPixelAccumulator
     {
         // map pixelIndex -> (componentId -> value)

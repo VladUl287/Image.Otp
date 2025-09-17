@@ -1,6 +1,14 @@
-﻿using Image.Otp.Extensions;
+﻿using BenchmarkDotNet.Running;
+using Image.Otp.Console.Benchmarks;
+using Image.Otp.Extensions;
 using Image.Otp.Primitives;
 
-var test = ImageExtensions.Load<Rgba32>("C:\\Users\\User\\source\\repos\\images\\firstJpg-progressive.jpg");
+//BenchmarkRunner.Run<JpegLoadBenchmark>();
+//return;
 
-test.SaveAsBmp("C:\\Users\\User\\source\\repos\\images\\progressive.bmp");
+var test = ImageExtensions.LoadJpegBase<Rgba32>("C:\\Users\\User\\source\\repos\\images\\firstJpg.jpg");
+var test2 = ImageExtensions.LoadJpegMemory<Rgba32>("C:\\Users\\User\\source\\repos\\images\\firstJpg.jpg");
+
+return;
+
+//test.SaveAsBmp("C:\\Users\\User\\source\\repos\\images\\progressive.bmp");

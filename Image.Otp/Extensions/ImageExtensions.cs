@@ -522,6 +522,244 @@ public static class ImageExtensions
         DecodeScanToBlocks(stream, huff, combiner);
     }
 
+    private static void DecodeScanToBlocksCombinedWithIDCT(
+        Stream stream,
+        Dictionary<(byte Class, byte Id), CanonicalHuffmanTable> huff,
+        Combiner combiner)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ArgumentNullException.ThrowIfNull(combiner);
+        ArgumentNullException.ThrowIfNull(combiner.FrameInfo);
+        ArgumentNullException.ThrowIfNull(combiner.ScanInfo);
+
+        var frameInfo = combiner.FrameInfo;
+        var scan = combiner.ScanInfo;
+        var restartInterval = combiner.RestartInterval;
+
+        if (scan.Ss != 0 || scan.Se != 63 || scan.Ah != 0 || scan.Al != 0)
+            throw new ArgumentException("This decoder only supports baseline non-progressive scans (Ss=0,Se=63,Ah=0,Al=0).");
+
+        var compMap = frameInfo.Components.ToDictionary(c => c.Id);
+
+        var scanComponents = scan.Components;
+
+        int maxH = frameInfo.Components.Max(c => c.HorizontalSampling);
+        int maxV = frameInfo.Components.Max(c => c.VerticalSampling);
+
+        int mcuCols = (frameInfo.Width + (8 * maxH - 1)) / (8 * maxH);
+        int mcuRows = (frameInfo.Height + (8 * maxV - 1)) / (8 * maxV);
+
+        var dcPredictor = new Dictionary<byte, int>(scanComponents.Count);
+        foreach (var sc in scanComponents) dcPredictor[sc.ComponentId] = 0;
+
+        int restartCounter = restartInterval;
+        int expectedRst = 0; // 0..7 for RST0..RST7
+
+        var bitReader = new StreamBitReader(stream);
+
+        var componentBuffers = new Dictionary<byte, byte[]>();
+        foreach (var comp in frameInfo.Components)
+        {
+            componentBuffers[comp.Id] = new byte[frameInfo.Width * frameInfo.Height];
+            Array.Fill(componentBuffers[comp.Id], (byte)128);
+        }
+
+        int width = frameInfo.Width;
+        int height = frameInfo.Height;
+
+        var result = new ImageNative<Rgba32>(width, height);
+        var output = result.Pixels;
+        for (int my = 0; my < mcuRows; my++)
+        {
+            for (int mx = 0; mx < mcuCols; mx++)
+            {
+                if (restartInterval > 0 && restartCounter == 0 && (mx != 0 || my != 0))
+                {
+                    RestartInterval(restartInterval, dcPredictor, out restartCounter, out expectedRst, bitReader);
+                }
+
+                foreach (var sc in scanComponents)
+                {
+                    var comp = compMap[sc.ComponentId];
+
+                    if (!combiner.QuantizationTables.TryGetValue(comp.QuantizationTableId, out var qTable))
+                    {
+                        throw new InvalidOperationException($"Quantization table {comp.QuantizationTableId} not found.");
+                    }
+
+                    int h = comp.HorizontalSampling;
+                    int v = comp.VerticalSampling;
+
+                    byte[] compBuffer = componentBuffers[comp.Id];
+
+                    int blocksPerMcu = h * v;
+
+                    var dcTable = huff[(0, sc.DcHuffmanTableId)];
+                    var acTable = huff[(1, sc.AcHuffmanTableId)];
+
+                    int scaleX = maxH / h;
+                    int scaleY = maxV / v;
+
+                    for (int by = 0; by < v; by++)
+                    {
+                        for (int bx = 0; bx < h; bx++)
+                        {
+                            short[] block = new short[64];
+
+                            block[0] = GetDc(dcPredictor, bitReader, sc, dcTable);
+
+                            SetAc(bitReader, acTable, block);
+
+                            block = JpegDecoderHelpers.NaturalToZigzag(block);
+
+                            double[] dequant = JpegHelpres.DequantizeBlock(block, qTable);
+                            double[] samples = new double[64];
+                            JpegHelpres.InverseDCT8x8(dequant, samples);
+
+                            int blockOriginX = mx * maxH * 8 + bx * 8 * scaleX;
+                            int blockOriginY = my * maxV * 8 + by * 8 * scaleY;
+
+                            for (int sy = 0; sy < 8; sy++)
+                            {
+                                for (int sx = 0; sx < 8; sx++)
+                                {
+                                    double sampleValue = samples[sy * 8 + sx] + 128.0;
+                                    int sampleInt = (int)Math.Round(sampleValue);
+                                    sampleInt = Math.Clamp(sampleInt, 0, 255);
+
+                                    for (int uy = 0; uy < scaleY; uy++)
+                                    {
+                                        int outY = blockOriginY + sy * scaleY + uy;
+                                        if (outY < 0 || outY >= height) continue;
+                                        for (int ux = 0; ux < scaleX; ux++)
+                                        {
+                                            int outX = blockOriginX + sx * scaleX + ux;
+                                            if (outX < 0 || outX >= width) continue;
+
+                                            int pixelIndex = outY * width + outX;
+                                            compBuffer[pixelIndex] = (byte)sampleInt;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (restartInterval > 0)
+                    restartCounter = Math.Max(--restartCounter, 0);
+            }
+        }
+
+        byte[] yBuffer = componentBuffers[1];
+        byte[] cbBuffer = componentBuffers.ContainsKey(2) ? componentBuffers[2] : null;
+        byte[] crBuffer = componentBuffers.ContainsKey(3) ? componentBuffers[3] : null;
+
+        for (int i = 0; i < width * height; i++)
+        {
+            byte yVal = yBuffer[i];
+            byte cbVal = cbBuffer != null ? cbBuffer[i] : (byte)128;
+            byte crVal = crBuffer != null ? crBuffer[i] : (byte)128;
+
+            double Yd = yVal;
+            double Cbd = cbVal - 128.0;
+            double Crd = crVal - 128.0;
+
+            int r = (int)Math.Round(Yd + 1.402 * Crd);
+            int g = (int)Math.Round(Yd - 0.344136 * Cbd - 0.714136 * Crd);
+            int b = (int)Math.Round(Yd + 1.772 * Cbd);
+
+            r = Math.Clamp(r, 0, 255);
+            g = Math.Clamp(g, 0, 255);
+            b = Math.Clamp(b, 0, 255);
+
+            output[i] = new Rgba32((byte)r, (byte)g, (byte)b);
+        }
+
+        result.SaveAsBmp("C:\\Users\\User\\source\\repos\\images\\3.bmp");
+
+        static short GetDc(Dictionary<byte, int> dcPredictor, StreamBitReader bitReader, ScanComponent sc, CanonicalHuffmanTable dcTable)
+        {
+            var sym = JpegHelpres.DecodeHuffmanSymbol(bitReader, dcTable);
+            if (sym < 0)
+                throw new EndOfStreamException("Marker or EOF encountered while decoding DC.");
+
+            var magnitude = sym; // number of additional bits
+            var dcDiff = 0;
+
+            if (magnitude > 0)
+            {
+                var bits = bitReader.ReadBits(magnitude, false);
+                if (bits < 0)
+                    throw new EndOfStreamException("EOF/marker while reading DC bits.");
+
+                dcDiff = JpegDecoderHelpers.ExtendSign(bits, magnitude);
+            }
+
+            var prevDc = dcPredictor[sc.ComponentId];
+            var dcVal = prevDc + dcDiff;
+            dcPredictor[sc.ComponentId] = dcVal;
+            return (short)dcVal;
+        }
+
+        static void SetAc(StreamBitReader bitReader, CanonicalHuffmanTable acTable, short[] block)
+        {
+            int k = 1;
+            while (k < 64)
+            {
+                int acSym = JpegHelpres.DecodeHuffmanSymbol(bitReader, acTable);
+                if (acSym < 0)
+                    throw new EndOfStreamException("Marker or EOF encountered while decoding AC.");
+
+                if (acSym == 0x00)
+                {
+                    break;
+                }
+                if (acSym == 0xF0)
+                {
+                    k += 16;
+                    continue;
+                }
+                int run = (acSym >> 4) & 0x0F;
+                int size = acSym & 0x0F;
+                k += run;
+                if (k >= 64)
+                    throw new InvalidDataException("Run exceeds block size while decoding AC.");
+
+                int bits = 0;
+                if (size > 0)
+                {
+                    bits = bitReader.ReadBits(size, false);
+                    if (bits < 0) throw new EndOfStreamException("EOF/marker while reading AC bits.");
+                }
+
+                int level = JpegDecoderHelpers.ExtendSign(bits, size);
+                block[k] = (short)level;
+                k++;
+            }
+        }
+
+        static void RestartInterval(int restartInterval, Dictionary<byte, int> dcPredictor, out int restartCounter, out int expectedRst, StreamBitReader bitReader)
+        {
+            bitReader.AlignToByte();
+
+            var marker = JpegHelpres.FindNextMarker(bitReader);
+            if (marker < 0)
+                throw new EndOfStreamException("Unexpected EOF while searching for restart marker.");
+            if (marker < 0xD0 || marker > 0xD7)
+                throw new InvalidDataException($"Expected restart marker RSTn but found 0xFF{marker:X2}.");
+
+            expectedRst = marker - 0xD0;
+
+            foreach (var k in dcPredictor.Keys)
+                dcPredictor[k] = 0;
+
+            expectedRst = (expectedRst + 1) & 7;
+            restartCounter = restartInterval;
+        }
+    }
+
+
     private static void DecodeScanToBlocks(
         Stream stream,
         Dictionary<(byte Class, byte Id), CanonicalHuffmanTable> huff,

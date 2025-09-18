@@ -5,11 +5,8 @@ using Image.Otp.Parsers;
 using System.Runtime.InteropServices;
 using Image.Otp.Pixels;
 using Image.Otp.Helpers;
-using static Image.Otp.SixLabors.JpegMcuDecoder;
-using Image.Otp.Enums;
 using Image.Otp.Constants;
 using System.Buffers;
-using System;
 
 namespace Image.Otp.Extensions;
 
@@ -117,6 +114,158 @@ public static class ImageExtensions
         return LoadJpeg<T>(fileStream);
     }
 
+    public static ImageNative<T> LoadJpegNative<T>(string path) where T : unmanaged, IPixel<T>
+    {
+        using var fileStream = new FileStream(path, FileMode.Open);
+        return LoadJpegNative<T>(fileStream);
+    }
+
+    private unsafe static Image<T> LoadJpeg<T>(byte[] bytes) where T : unmanaged, IPixel<T>
+    {
+        List<JpegSegment> segments = JpegParser.ParseSegmentsWithRestartMarkers(bytes);
+
+        Dictionary<byte, QuantizationTable> qTables = JpegTableDecoder.ParseDqtSegments(segments);
+
+        List<HuffmanTable> hTables = JpegTableDecoder.ParseDhtSegments(segments);
+
+        JpegSegment frameSegment = segments.First(s => s.Marker == 0xC0 || s.Marker == 0xC2);
+        var progressive = frameSegment.Marker == 0xC2;
+        FrameInfo frameInfo = JpegTableDecoder.ParseSofSegment(frameSegment);
+
+        var scanInfoss = JpegTableDecoder.ParseSosSegment(segments.First(s => s.Marker == 0xDA));
+
+        var huffDc = new Dictionary<byte, CanonicalHuffmanTable>();
+        var huffAc = new Dictionary<byte, CanonicalHuffmanTable>();
+        foreach (var ht in hTables)
+        {
+            var table = HuffmanTableLogic.BuildCanonical(ht.CodeLengths, ht.Symbols);
+            if (ht.Class == 0) huffDc[ht.Id] = table;
+            else huffAc[ht.Id] = table;
+        }
+
+        var driData = segments.FirstOrDefault(c => c.Marker == 221)?.Data;
+        var restartInterval = 0;
+        if (driData is not null)
+        {
+            restartInterval = (driData[0] << 8) | driData[1];
+        }
+
+        byte[] rgba = [];
+        if (progressive)
+        {
+            var sosDhtDataSegments = segments.Where(s => new byte[] { 0xDA, 0x00, 0xC4 }.Contains(s.Marker)).ToList();
+
+            var currentTables = new Dictionary<(int Class, int Id), HuffmanTable>();
+
+            List<MCUBlock>? currentMcus = null;
+            ScanInfo? currentScanInfo = null;
+            for (int i = 0; i < sosDhtDataSegments.Count; i++)
+            {
+                var segment = sosDhtDataSegments[i];
+
+                if (segment.Marker == 0xC4)
+                {
+                    var dhtTable = JpegTableDecoder.ParseDhtSegments([segment]).First();
+                    currentTables[(dhtTable.Class, dhtTable.Id)] = dhtTable;
+                }
+                if (segment.Marker == 0xDA)
+                {
+                    var sosSegment = segment;
+                    currentScanInfo = JpegTableDecoder.ParseSosSegment(sosSegment);
+                }
+                if (segment.Marker == 0x00 && currentScanInfo is not null)
+                {
+                    var dataSegment = segment;
+
+                    bool isDcOnlyScan = (currentScanInfo.Ss == 0 && currentScanInfo.Se == 0);
+
+                    huffDc.Clear();
+                    huffAc.Clear();
+
+                    foreach (var component in currentScanInfo.Components)
+                    {
+                        if (!currentTables.TryGetValue((0, component.DcHuffmanTableId), out var dcTable))
+                            throw new InvalidOperationException($"DC Huffman table {component.DcHuffmanTableId} not found");
+
+                        if (!currentTables.TryGetValue((1, component.AcHuffmanTableId), out var acTable) && !isDcOnlyScan)
+                        {
+                            throw new InvalidOperationException($"AC Huffman table {component.AcHuffmanTableId} not found");
+                        }
+
+                        huffDc[component.DcHuffmanTableId] = HuffmanTableLogic.BuildCanonical(dcTable.CodeLengths, dcTable.Symbols);
+                        if (acTable is not null)
+                        {
+                            huffAc[component.AcHuffmanTableId] = HuffmanTableLogic.BuildCanonical(acTable.CodeLengths, acTable.Symbols);
+                        }
+                    }
+
+                    currentMcus = JpegMcuDecoder.DecodeScanToBlocksProgressive(
+                        dataSegment.Data, frameInfo, currentScanInfo,
+                        huffDc, huffAc, restartInterval, currentMcus);
+                }
+            }
+
+            foreach (var mcu in currentMcus)
+            {
+                foreach (var blocks in mcu.ComponentBlocks)
+                {
+                    for (int i = 0; i < blocks.Value.Count; i++)
+                    {
+                        var block = blocks.Value[i];
+                        blocks.Value[i] = JpegDecoderHelpers.NaturalToZigzag(blocks.Value[i]);
+                    }
+                }
+            }
+
+            rgba = JpegProcessor.ProcessMCUBlocks(frameInfo, currentMcus, qTables);
+        }
+        else
+        {
+            var scanInfo = JpegTableDecoder.ParseSosSegment(segments.First(s => s.Marker == 0xDA));
+            var segment = segments.Single(s => s.Marker == 0x00);
+            var mcus = JpegMcuDecoder.DecodeScanToBlocks(
+                segment.Data,
+                frameInfo,
+                scanInfo,
+                huffDc,
+                huffAc,
+                restartInterval);
+
+            rgba = JpegProcessor.ProcessMCUBlocks(frameInfo, scanInfo, mcus, qTables);
+        }
+
+        var width = frameInfo.Width;
+        var height = frameInfo.Height;
+
+        var image = new Image<T>(width, height);
+
+        var processor = PixelProcessorFactory.GetProcessor<T>();
+
+        int bytesPerPixel = Marshal.SizeOf<T>();
+        var sourceBytesPerPixel = bytesPerPixel;
+
+        fixed (T* dstPtr = &image.Pixels[0])
+        {
+            fixed (byte* srcPtr = rgba)
+            {
+                int sourceStride = width * bytesPerPixel; // Assuming source has same layout
+
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        int srcPos = y * sourceStride + x * sourceBytesPerPixel;
+                        int dstPos = y * width + x;
+
+                        processor.ProcessPixel(srcPtr, srcPos, dstPtr, dstPos, sourceBytesPerPixel);
+                    }
+                }
+            }
+        }
+
+        return image;
+    }
+
     private unsafe static Image<T> LoadJpeg<T>(Stream stream) where T : unmanaged, IPixel<T>
     {
         var combiner = new Combiner();
@@ -134,23 +283,12 @@ public static class ImageExtensions
                     break;
                 }
 
-                if (byteRead == JpegMarkers.OO)
-                {
-                    continue;
-                }
-
-                if (byteRead >= JpegMarkers.D0 && byteRead <= JpegMarkers.D7)
-                {
-                    continue;
-                }
-
                 if (JpegMarkers.HasLengthData(byteRead))
                 {
                     var firstPart = stream.ReadByte();
                     var secondPart = stream.ReadByte();
 
-                    //int length = (bytes[i + 2] << 8) | bytes[i + 3];
-                    int length = (firstPart * 256) | secondPart;
+                    var length = (firstPart << 8) | secondPart;
                     length -= 2;
 
                     ProcessMarker(stream, byteRead, length, combiner);
@@ -158,10 +296,105 @@ public static class ImageExtensions
             }
         }
 
-        return default;
+        var rgba = JpegProcessor.ProcessMCUBlocks(combiner.FrameInfo, combiner.ScanInfo, combiner.MCUs, combiner.QuantizationTables);
+
+        var width = combiner.FrameInfo.Width;
+        var height = combiner.FrameInfo.Height;
+
+        var image = new Image<T>(width, height);
+
+        var processor = PixelProcessorFactory.GetProcessor<T>();
+
+        int bytesPerPixel = Marshal.SizeOf<T>();
+        var sourceBytesPerPixel = bytesPerPixel;
+
+        fixed (T* dstPtr = &image.Pixels[0])
+        {
+            fixed (byte* srcPtr = rgba)
+            {
+                int sourceStride = width * bytesPerPixel;
+
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        int srcPos = y * sourceStride + x * sourceBytesPerPixel;
+                        int dstPos = y * width + x;
+
+                        processor.ProcessPixel(srcPtr, srcPos, dstPtr, dstPos, sourceBytesPerPixel);
+                    }
+                }
+            }
+        }
+
+        return image;
     }
 
-    private sealed class Combiner
+    private unsafe static ImageNative<T> LoadJpegNative<T>(Stream stream) where T : unmanaged, IPixel<T>
+    {
+        var combiner = new Combiner();
+
+        while (stream.CanRead)
+        {
+            var byteRead = stream.ReadByte();
+
+            if (byteRead == JpegMarkers.FF)
+            {
+                byteRead = stream.ReadByte();
+
+                if (byteRead == JpegMarkers.EOI)
+                {
+                    break;
+                }
+
+                if (JpegMarkers.HasLengthData(byteRead))
+                {
+                    var firstPart = stream.ReadByte();
+                    var secondPart = stream.ReadByte();
+
+                    var length = (firstPart << 8) | secondPart;
+                    length -= 2;
+
+                    ProcessMarker(stream, byteRead, length, combiner);
+                }
+            }
+        }
+
+        var rgba = JpegProcessor.ProcessMCUBlocks(combiner.FrameInfo, combiner.ScanInfo, combiner.MCUs, combiner.QuantizationTables);
+
+        var width = combiner.FrameInfo.Width;
+        var height = combiner.FrameInfo.Height;
+
+        var image = new ImageNative<T>(width, height);
+
+        var processor = PixelProcessorFactory.GetProcessor<T>();
+
+        int bytesPerPixel = Marshal.SizeOf<T>();
+        var sourceBytesPerPixel = bytesPerPixel;
+
+        fixed (T* dstPtr = &image.Pixels[0])
+        {
+            fixed (byte* srcPtr = rgba)
+            {
+                int sourceStride = width * bytesPerPixel;
+
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        int srcPos = y * sourceStride + x * sourceBytesPerPixel;
+                        int dstPos = y * width + x;
+
+                        processor.ProcessPixel(srcPtr, srcPos, dstPtr, dstPos, sourceBytesPerPixel);
+                    }
+                }
+            }
+        }
+
+        return image;
+    }
+
+    public sealed class Combiner
     {
         public FrameInfo FrameInfo { get; set; }
         public ScanInfo ScanInfo { get; set; }
@@ -170,6 +403,9 @@ public static class ImageExtensions
 
         public List<HuffmanTable> HuffmanTables = [];
 
+        public int RestartInterval { get; set; }
+
+        public List<MCUBlock> MCUs = [];
     }
 
     private static void ProcessMarker(Stream stream, int marker, int length, Combiner combiner)
@@ -267,31 +503,11 @@ public static class ImageExtensions
         byte ah = (byte)(ahAl >> 4);
         byte al = (byte)(ahAl & 0x0F);
 
-        var data = new List<byte>();
-        while (stream.CanRead)
+        var huff = new Dictionary<(byte Class, byte Id), CanonicalHuffmanTable>(combiner.HuffmanTables.Count);
+        foreach (var ht in combiner.HuffmanTables)
         {
-            var byteRead = stream.ReadByte();
-
-            if (byteRead == JpegMarkers.FF)
-            {
-                byteRead = stream.ReadByte();
-
-                if (byteRead == JpegMarkers.EOI)
-                {
-                    stream.Position -= 2;
-                    break;
-                }
-
-                if (byteRead == JpegMarkers.OO)
-                    continue;
-
-                if (byteRead >= JpegMarkers.D0 && byteRead <= JpegMarkers.D7)
-                    continue;
-
-                break;
-            }
-
-            data.Add((byte)byteRead);
+            var table = HuffmanTableLogic.BuildCanonical(ht.CodeLengths, ht.Symbols);
+            huff[(ht.Class, ht.Id)] = table;
         }
 
         combiner.ScanInfo = new ScanInfo
@@ -300,9 +516,176 @@ public static class ImageExtensions
             Ss = ss,
             Se = se,
             Ah = ah,
-            Al = al,
-            Data = [.. data]
+            Al = al
         };
+
+        DecodeScanToBlocks(stream, huff, combiner);
+    }
+
+    private static void DecodeScanToBlocks(
+        Stream stream,
+        Dictionary<(byte Class, byte Id), CanonicalHuffmanTable> huff,
+        Combiner combiner)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ArgumentNullException.ThrowIfNull(combiner);
+        ArgumentNullException.ThrowIfNull(combiner.FrameInfo);
+        ArgumentNullException.ThrowIfNull(combiner.ScanInfo);
+
+        var frame = combiner.FrameInfo;
+        var scan = combiner.ScanInfo;
+        var restartInterval = combiner.RestartInterval;
+
+        if (scan.Ss != 0 || scan.Se != 63 || scan.Ah != 0 || scan.Al != 0)
+            throw new ArgumentException("This decoder only supports baseline non-progressive scans (Ss=0,Se=63,Ah=0,Al=0).");
+
+        var compMap = frame.Components.ToDictionary(c => c.Id);
+
+        var scanComponents = scan.Components;
+
+        int maxH = frame.Components.Max(c => c.HorizontalSampling);
+        int maxV = frame.Components.Max(c => c.VerticalSampling);
+
+        int mcuCols = (frame.Width + (8 * maxH - 1)) / (8 * maxH);
+        int mcuRows = (frame.Height + (8 * maxV - 1)) / (8 * maxV);
+
+        var dcPredictor = new Dictionary<byte, int>(scanComponents.Count);
+        foreach (var sc in scanComponents) dcPredictor[sc.ComponentId] = 0;
+
+        int restartCounter = restartInterval;
+        int expectedRst = 0; // 0..7 for RST0..RST7
+
+        var bitReader = new StreamBitReader(stream);
+
+        var result = new List<MCUBlock>(mcuRows * mcuCols);
+        for (int my = 0; my < mcuRows; my++)
+        {
+            for (int mx = 0; mx < mcuCols; mx++)
+            {
+                if (restartInterval > 0 && restartCounter == 0 && (mx != 0 || my != 0))
+                {
+                    RestartInterval(restartInterval, dcPredictor, out restartCounter, out expectedRst, bitReader);
+                }
+
+                var mcu = new MCUBlock { X = mx, Y = my };
+
+                foreach (var sc in scanComponents)
+                {
+                    var comp = compMap[sc.ComponentId];
+                    int h = comp.HorizontalSampling;
+                    int v = comp.VerticalSampling;
+
+                    int blocksPerMcu = h * v;
+                    if (!mcu.ComponentBlocks.TryGetValue(sc.ComponentId, out var list))
+                    {
+                        list = new List<short[]>(blocksPerMcu);
+                        mcu.ComponentBlocks[sc.ComponentId] = list;
+                    }
+
+                    var dcTable = huff[(0, sc.DcHuffmanTableId)];
+                    var acTable = huff[(1, sc.AcHuffmanTableId)];
+
+                    for (int b = 0; b < blocksPerMcu; b++)
+                    {
+                        short[] block = new short[64];
+
+                        block[0] = GetDc(dcPredictor, bitReader, sc, dcTable);
+
+                        SetAc(bitReader, acTable, block);
+
+                        block = JpegDecoderHelpers.NaturalToZigzag(block);
+                        list.Add(block);
+                    }
+                }
+
+                result.Add(mcu);
+
+                if (restartInterval > 0)
+                    restartCounter = Math.Max(--restartCounter, 0);
+            }
+        }
+
+        combiner.MCUs = result;
+
+        static short GetDc(Dictionary<byte, int> dcPredictor, StreamBitReader bitReader, ScanComponent sc, CanonicalHuffmanTable dcTable)
+        {
+            var sym = JpegHelpres.DecodeHuffmanSymbol(bitReader, dcTable);
+            if (sym < 0)
+                throw new EndOfStreamException("Marker or EOF encountered while decoding DC.");
+
+            var magnitude = sym; // number of additional bits
+            var dcDiff = 0;
+
+            if (magnitude > 0)
+            {
+                var bits = bitReader.ReadBits(magnitude, false);
+                if (bits < 0)
+                    throw new EndOfStreamException("EOF/marker while reading DC bits.");
+
+                dcDiff = JpegDecoderHelpers.ExtendSign(bits, magnitude);
+            }
+
+            var prevDc = dcPredictor[sc.ComponentId];
+            var dcVal = prevDc + dcDiff;
+            dcPredictor[sc.ComponentId] = dcVal;
+            return (short)dcVal;
+        }
+
+        static void SetAc(StreamBitReader bitReader, CanonicalHuffmanTable acTable, short[] block)
+        {
+            int k = 1;
+            while (k < 64)
+            {
+                int acSym = JpegHelpres.DecodeHuffmanSymbol(bitReader, acTable);
+                if (acSym < 0)
+                    throw new EndOfStreamException("Marker or EOF encountered while decoding AC.");
+
+                if (acSym == 0x00)
+                {
+                    break;
+                }
+                if (acSym == 0xF0)
+                {
+                    k += 16;
+                    continue;
+                }
+                int run = (acSym >> 4) & 0x0F;
+                int size = acSym & 0x0F;
+                k += run;
+                if (k >= 64)
+                    throw new InvalidDataException("Run exceeds block size while decoding AC.");
+
+                int bits = 0;
+                if (size > 0)
+                {
+                    bits = bitReader.ReadBits(size, false);
+                    if (bits < 0) throw new EndOfStreamException("EOF/marker while reading AC bits.");
+                }
+
+                int level = JpegDecoderHelpers.ExtendSign(bits, size);
+                block[k] = (short)level;
+                k++;
+            }
+        }
+
+        static void RestartInterval(int restartInterval, Dictionary<byte, int> dcPredictor, out int restartCounter, out int expectedRst, StreamBitReader bitReader)
+        {
+            bitReader.AlignToByte();
+
+            var marker = JpegHelpres.FindNextMarker(bitReader);
+            if (marker < 0)
+                throw new EndOfStreamException("Unexpected EOF while searching for restart marker.");
+            if (marker < 0xD0 || marker > 0xD7)
+                throw new InvalidDataException($"Expected restart marker RSTn but found 0xFF{marker:X2}.");
+
+            expectedRst = marker - 0xD0;
+
+            foreach (var k in dcPredictor.Keys)
+                dcPredictor[k] = 0;
+
+            expectedRst = (expectedRst + 1) & 7;
+            restartCounter = restartInterval;
+        }
     }
 
     private static void ProcessSOF(Stream stream, int marker, int length, Combiner combiner)
@@ -377,8 +760,8 @@ public static class ImageExtensions
                 throw new InvalidDataException($"Unsupported DQT precision {pq} in table {tq}.");
 
             const int DqtTableSize = 64;
-            var raw = new ushort[DqtTableSize];
-            //var raw = ArrayPool<ushort>.Shared.Rent(DqtTableSize);
+            //var raw = new ushort[DqtTableSize];
+            var raw = ArrayPool<ushort>.Shared.Rent(DqtTableSize);
 
             if (pq == 0)
             {
@@ -396,217 +779,20 @@ public static class ImageExtensions
                 }
             }
 
-            tables[tq] = new QuantizationTable
-            {
-                Id = tq,
-                Values = raw
-            };
-
-            //var natural = JpegDecoderHelpers.NaturalToZigzag(raw);
-            //ArrayPool<ushort>.Shared.Return(raw);
-
             //tables[tq] = new QuantizationTable
             //{
             //    Id = tq,
-            //    Values = natural
+            //    Values = raw
             //};
-        }
-    }
 
-    private unsafe static Image<T> LoadJpeg<T>(byte[] bytes) where T : unmanaged, IPixel<T>
-    {
-        List<JpegSegment> segments = JpegParser.ParseSegmentsWithRestartMarkers(bytes);
+            var natural = JpegDecoderHelpers.NaturalToZigzag(raw);
+            ArrayPool<ushort>.Shared.Return(raw);
 
-        Dictionary<byte, QuantizationTable> qTables = JpegTableDecoder.ParseDqtSegments(segments);
-
-        foreach (var kv in qTables)
-        {
-            Console.WriteLine($"DQT id={kv.Key}");
-            var t = kv.Value;
-            for (int i = 0; i < 64; i++)
+            tables[tq] = new QuantizationTable
             {
-                Console.Write(t.Values[i] + (i % 8 == 7 ? "\n" : " "));
-            }
+                Id = tq,
+                Values = natural
+            };
         }
-
-        List<HuffmanTable> hTables = JpegTableDecoder.ParseDhtSegments(segments);
-
-        foreach (var ht in hTables.OrderBy(c => c.Class))
-        {
-            Console.WriteLine($"DHT class={ht.Class} id={ht.Id}");
-            Console.Write("bits: ");
-            for (int i = 1; i <= 16; i++) Console.Write(ht.CodeLengths[i - 1] + " ");
-            Console.WriteLine();
-            Console.Write("vals: ");
-            foreach (var s in ht.Symbols) Console.Write(s.ToString("X2") + " ");
-            Console.WriteLine();
-        }
-
-        JpegSegment frameSegment = segments.First(s => s.Marker == 0xC0 || s.Marker == 0xC2);
-        var progressive = frameSegment.Marker == 0xC2;
-        FrameInfo frameInfo = JpegTableDecoder.ParseSofSegment(frameSegment);
-
-        var scanInfoss = JpegTableDecoder.ParseSosSegment(segments.First(s => s.Marker == 0xDA));
-
-        for (int i = 0; i < frameInfo.Components.Length; i++)
-        {
-            var c = frameInfo.Components[i];
-            var component = scanInfoss.Components.First(a => a.ComponentId == c.Id);
-            Console.WriteLine($" comp {i}: id={c.Id} hsamp={c.HorizontalSampling} " +
-                $"vsamp={c.VerticalSampling} quant={c.QuantizationTableId} dc_tbl={component.DcHuffmanTableId} ac_tbl={component.AcHuffmanTableId}");
-        }
-
-        var huffDc = new Dictionary<byte, CanonicalHuffmanTable>();
-        var huffAc = new Dictionary<byte, CanonicalHuffmanTable>();
-        foreach (var ht in hTables)
-        {
-            var table = HuffmanTableLogic.BuildCanonical(ht.CodeLengths, ht.Symbols);
-            if (ht.Class == 0) huffDc[ht.Id] = table;
-            else huffAc[ht.Id] = table;
-        }
-
-        var driData = segments.FirstOrDefault(c => c.Marker == 221)?.Data;
-        var restartInterval = 0;
-        if (driData is not null)
-        {
-            restartInterval = (driData[0] << 8) | driData[1];
-        }
-
-        byte[] rgba = [];
-        if (progressive)
-        {
-            var sosDhtDataSegments = segments.Where(s => new byte[] { 0xDA, 0x00, 0xC4 }.Contains(s.Marker)).ToList();
-
-            var currentTables = new Dictionary<(int Class, int Id), HuffmanTable>();
-
-            List<MCUBlock>? currentMcus = null;
-            ScanInfo? currentScanInfo = null;
-            for (int i = 0; i < sosDhtDataSegments.Count; i++)
-            {
-                var segment = sosDhtDataSegments[i];
-
-                if (segment.Marker == 0xC4)
-                {
-                    var dhtTable = JpegTableDecoder.ParseDhtSegments([segment]).First();
-                    currentTables[(dhtTable.Class, dhtTable.Id)] = dhtTable;
-                }
-                if (segment.Marker == 0xDA)
-                {
-                    var sosSegment = segment;
-                    currentScanInfo = JpegTableDecoder.ParseSosSegment(sosSegment);
-                }
-                if (segment.Marker == 0x00 && currentScanInfo is not null)
-                {
-                    var dataSegment = segment;
-
-                    bool isDcOnlyScan = (currentScanInfo.Ss == 0 && currentScanInfo.Se == 0);
-
-                    huffDc.Clear();
-                    huffAc.Clear();
-
-                    foreach (var component in currentScanInfo.Components)
-                    {
-                        if (!currentTables.TryGetValue((0, component.DcHuffmanTableId), out var dcTable))
-                            throw new InvalidOperationException($"DC Huffman table {component.DcHuffmanTableId} not found");
-
-                        if (!currentTables.TryGetValue((1, component.AcHuffmanTableId), out var acTable) && !isDcOnlyScan)
-                        {
-                            throw new InvalidOperationException($"AC Huffman table {component.AcHuffmanTableId} not found");
-                        }
-
-                        huffDc[component.DcHuffmanTableId] = HuffmanTableLogic.BuildCanonical(dcTable.CodeLengths, dcTable.Symbols);
-                        if (acTable is not null)
-                        {
-                            huffAc[component.AcHuffmanTableId] = HuffmanTableLogic.BuildCanonical(acTable.CodeLengths, acTable.Symbols);
-                        }
-                    }
-
-                    currentMcus = JpegMcuDecoder.DecodeScanToBlocksProgressive(
-                        dataSegment.Data, frameInfo, currentScanInfo,
-                        huffDc, huffAc, restartInterval, currentMcus);
-                }
-            }
-
-            foreach (var mcu in currentMcus)
-            {
-                foreach (var blocks in mcu.ComponentBlocks)
-                {
-                    for (int i = 0; i < blocks.Value.Count; i++)
-                    {
-                        var block = blocks.Value[i];
-                        blocks.Value[i] = JpegDecoderHelpers.NaturalToZigzag(blocks.Value[i]);
-                    }
-                }
-            }
-
-            rgba = JpegProcessor.ProcessMCUBlocks(frameInfo, currentMcus, qTables);
-        }
-        else
-        {
-            var scanInfo = JpegTableDecoder.ParseSosSegment(segments.First(s => s.Marker == 0xDA));
-            var segment = segments.Single(s => s.Marker == 0x00);
-            var mcus = JpegMcuDecoder.DecodeScanToBlocks(
-                segment.Data,
-                frameInfo,
-                scanInfo,
-                qTables,
-                huffDc,
-                huffAc,
-                restartInterval);
-
-            rgba = JpegProcessor.ProcessMCUBlocks(frameInfo, scanInfo, mcus, qTables);
-        }
-
-        var width = frameInfo.Width;
-        var height = frameInfo.Height;
-
-        var image = new Image<T>(width, height);
-
-        var processor = PixelProcessorFactory.GetProcessor<T>();
-
-        int bytesPerPixel = Marshal.SizeOf<T>();
-        var sourceBytesPerPixel = bytesPerPixel;
-
-        fixed (T* dstPtr = &image.Pixels[0])
-        {
-            fixed (byte* srcPtr = rgba)
-            {
-                int sourceStride = width * bytesPerPixel; // Assuming source has same layout
-
-                for (int y = 0; y < height; y++)
-                {
-                    for (int x = 0; x < width; x++)
-                    {
-                        int srcPos = y * sourceStride + x * sourceBytesPerPixel;
-                        int dstPos = y * width + x;
-
-                        processor.ProcessPixel(srcPtr, srcPos, dstPtr, dstPos, sourceBytesPerPixel);
-                    }
-                }
-            }
-        }
-
-        return image;
-    }
-
-    // Alternative method using MemoryMarshal for better performance
-    public static void FillFromByteArrayFast(this Image<Rgba32> image, byte[] rgbaData)
-    {
-        if (rgbaData.Length < image.Width * image.Height * 4)
-        {
-            throw new ArgumentException("Byte array is too small for the image dimensions");
-        }
-
-        var pixelSpan = MemoryMarshal.Cast<Rgba32, byte>(image.Pixels);
-        rgbaData.CopyTo(pixelSpan);
-        //rgbaData.AsSpan(0, pixelSpan.Length).CopyTo(pixelSpan);
-    }
-
-    // Method to create a new image from byte array
-    public static Image<Rgba32> CreateFromByteArray(int width, int height, byte[] rgbaData)
-    {
-        var image = new Image<Rgba32>(width, height);
-        image.FillFromByteArrayFast(rgbaData);
-        return image;
     }
 }

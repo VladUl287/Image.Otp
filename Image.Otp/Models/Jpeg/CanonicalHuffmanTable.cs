@@ -404,9 +404,9 @@ public sealed class HuffmanTableLogic
     }
 }
 
-public class MCUBlock
+public sealed class MCUBlock
 {
-    public int X { get; set; }
-    public int Y { get; set; }
-    public Dictionary<byte, List<short[]>> ComponentBlocks { get; set; } = [];
+    public int X { get; init; }
+    public int Y { get; init; }
+    public Dictionary<byte, List<short[]>> ComponentBlocks { get; init; } = [];
 }

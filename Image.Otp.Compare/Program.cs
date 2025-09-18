@@ -3,7 +3,6 @@ using Image.Otp.Parsers;
 using SixLabors.ImageSharp.PixelFormats;
 using System.Drawing.Imaging;
 using System.Drawing;
-using Image.Otp.SixLabors;
 using Image.Otp;
 
 class Program
@@ -211,7 +210,6 @@ class Program
                 segment.Data,
                 frameInfo,
                 scanInfo,
-                qTables,
                 huffDc,
                 huffAc,
                 restartInterval);

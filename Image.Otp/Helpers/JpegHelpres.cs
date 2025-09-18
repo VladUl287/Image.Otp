@@ -1,10 +1,62 @@
 ﻿using Image.Otp.Models.Jpeg;
+using Image.Otp.SixLabors;
 using System.Text;
 
 namespace Image.Otp.Helpers;
 
 public static class JpegHelpres
 {
+    public static int FindNextMarker(StreamBitReader br)
+    {
+        while (true)
+        {
+            int b = br.ReadRawByte();
+            if (b < 0) 
+                return -1;
+
+            if (b == 0xFF)
+            {
+                // skip any 0xFF fills
+                int second;
+                do
+                {
+                    second = br.ReadRawByte();
+                    if (second < 0) return -1;
+                } while (second == 0xFF);
+
+                if (second == 0x00)
+                {
+                    // stuffed 0xFF data byte, continue scanning
+                    continue;
+                }
+                return second;
+            }
+        }
+    }
+
+    public static int DecodeHuffmanSymbol(StreamBitReader br, CanonicalHuffmanTable table)
+    {
+        int code = 0;
+        for (int length = 1; length <= 16; length++)
+        {
+            int bit = br.ReadBit();
+            if (bit < 0)
+            {
+                //Console.WriteLine($"[DecodeHuffmanSymbol] Marker/EOF encountered at bitLength={length}, code=0b{Convert.ToString(code, 2)}");
+                return -1;
+            }
+
+            code = (code << 1) | bit;
+
+            if (table.TryGetSymbol(code, length, out byte sym))
+            {
+                return sym;
+            }
+        }
+
+        throw new InvalidDataException("Invalid Huffman code (no symbol within 16 bits).");
+    }
+
     public static void PrintAllComponentsLikeC(List<MCUBlock> allMcus)
     {
         var file = new StringBuilder(1_000_000);

@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Image.Otp.Compare", "Image.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Image.Otp.Generator", "Image.Otp.Generator\Image.Otp.Generator.csproj", "{EBFDF0B1-2A38-4DA0-AACB-883535B9C50D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Image.Otp.Abstractions", "Image.Otp.Abstractions\Image.Otp.Abstractions.csproj", "{D4328077-D753-4334-B526-0A261D33CF0F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{EBFDF0B1-2A38-4DA0-AACB-883535B9C50D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EBFDF0B1-2A38-4DA0-AACB-883535B9C50D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EBFDF0B1-2A38-4DA0-AACB-883535B9C50D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D4328077-D753-4334-B526-0A261D33CF0F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D4328077-D753-4334-B526-0A261D33CF0F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D4328077-D753-4334-B526-0A261D33CF0F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D4328077-D753-4334-B526-0A261D33CF0F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -5,48 +5,6 @@ namespace Image.Otp;
 
 public static class JpegMcuDecoder
 {
-    // Decode a single Huffman-coded symbol using canonical table.
-    // Returns -1 on marker/EOF.
-    //private static int DecodeHuffmanSymbol(CustomBitReader br, CanonicalHuffmanTable table)
-    //{
-    //    int code = 0;
-    //    for (int length = 1; length <= 16; length++)
-    //    {
-    //        int bit = br.ReadBit();
-    //        if (bit < 0) return -1;
-    //        code = (code << 1) | bit;
-    //        if (table.TryGetSymbol(code, length, out byte sym))
-    //        {
-    //            //Console.WriteLine($"id = {table.Id} len={length} sym = {sym} code={Convert.ToString(code, 2).PadLeft(length, '0')}");
-
-    //            return sym;
-    //        }
-    //    }
-    //    return -1;
-    //    Console.WriteLine($"id={table.Id} code={Convert.ToString(code, 2).PadLeft(16, '0')}");
-    //    throw new InvalidDataException("Invalid Huffman code (no symbol within 16 bits).");
-    //}
-
-    //public static int DecodeHuffmanSymbol(CustomBitReader bitReader, CanonicalHuffmanTable table)
-    //{
-    //    int code = 0;
-    //    int length = 0;
-
-    //    // Read bits until we find a matching Huffman code
-    //    while (length < 32) // Limit to prevent infinite loop
-    //    {
-    //        code = (code << 1) | bitReader.ReadBit();
-    //        length++;
-
-    //        if (table.TryGetSymbol(code, length, out var symbol))
-    //        {
-    //            return symbol;
-    //        }
-    //    }
-
-    //    throw new Exception("Invalid Huffman code");
-    //}
-
     private static int DecodeHuffmanSymbol(CustomBitReader br, CanonicalHuffmanTable table)
     {
         int code = 0;
@@ -411,7 +369,6 @@ public static class JpegMcuDecoder
         byte[] compressed,
         FrameInfo frame,
         ScanInfo scan,
-        Dictionary<byte, QuantizationTable> qTables,
         Dictionary<byte, CanonicalHuffmanTable> huffDc,
         Dictionary<byte, CanonicalHuffmanTable> huffAc,
         int restartInterval)
@@ -499,9 +456,6 @@ public static class JpegMcuDecoder
                         mcu.ComponentBlocks[sc.ComponentId] = list;
                     }
 
-                    var qTable = qTables[comp.QuantizationTableId];
-                    if (qTable == null) throw new InvalidOperationException($"Missing quantization table {comp.QuantizationTableId}");
-
                     var dcTable = huffDc[sc.DcHuffmanTableId];
                     var acTable = huffAc[sc.AcHuffmanTableId];
 
@@ -561,14 +515,7 @@ public static class JpegMcuDecoder
                             k++;
                         }
 
-                        // Dequantize (multiply by table values) and convert zigzag to row-major
-                        short[] dequantZz = new short[64];
-                        for (int i = 0; i < 64; i++)
-                        {
-                            //dequantZz[i] = (short)(zz[i] * qTable.Values[i]);
-                            dequantZz[i] = zz[i];
-                        }
-                        short[] block = JpegDecoderHelpers.NaturalToZigzag(dequantZz);
+                        short[] block = JpegDecoderHelpers.NaturalToZigzag(zz);
                         list.Add(block);
                     }
                 }

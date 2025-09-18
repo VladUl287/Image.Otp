@@ -14,6 +14,4 @@ public sealed class ScanInfo
     public byte Se { get; init; }  // End of spectral selection (63 for baseline)
     public byte Ah { get; init; }  // Approximation high (baseline: 0)
     public byte Al { get; init; }  // Approximation low (baseline: 0)
-
-    public byte[] Data { get; init; } = [];
 }

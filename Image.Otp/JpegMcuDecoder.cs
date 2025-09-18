@@ -3,7 +3,7 @@ using Image.Otp.Models.Jpeg;
 using System.Text;
 using System.Text.Json;
 
-namespace Image.Otp.SixLabors;
+namespace Image.Otp;
 
 public class CustomBitReader(byte[] data)
 {

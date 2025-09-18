@@ -2,7 +2,6 @@
 using System.Runtime.CompilerServices;
 using Image.Otp.Models.Jpeg;
 using Image.Otp.Parsers;
-using Image.Otp.SixLabors;
 using System.Runtime.InteropServices;
 using Image.Otp.Pixels;
 using Image.Otp.Helpers;

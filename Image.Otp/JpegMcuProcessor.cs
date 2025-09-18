@@ -1,7 +1,7 @@
 ﻿using Image.Otp.Models.Jpeg;
 using System.Buffers;
 
-namespace Image.Otp.SixLabors;
+namespace Image.Otp;
 
 public static class JpegProcessor
 {

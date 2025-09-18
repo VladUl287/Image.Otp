@@ -1,5 +1,4 @@
 ﻿using Image.Otp.Models.Jpeg;
-using Image.Otp.SixLabors;
 using System.Text;
 
 namespace Image.Otp.Helpers;

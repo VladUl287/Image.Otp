@@ -1,6 +1,8 @@
-﻿namespace Image.Otp.Contracts;
+﻿using Image.Otp.Pixels;
 
-public interface IImageProcessor<T> where T : unmanaged
+namespace Image.Otp.Contracts;
+
+public interface IImageProcessor<T> where T : unmanaged, IPixel<T>
 {
     Task<ImageOtp<T>> ProcessAsync(Stream imageStream);
     Task<ImageOtp<T>> ProcessAsync(byte[] imageData);

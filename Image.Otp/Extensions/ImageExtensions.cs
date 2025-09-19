@@ -114,7 +114,7 @@ public static class ImageExtensions
         return LoadJpeg<T>(fileStream);
     }
 
-    public static ImageNative<T> LoadJpegNative<T>(string path) where T : unmanaged, IPixel<T>
+    public static ImageOtp<T> LoadJpegNative<T>(string path) where T : unmanaged, IPixel<T>
     {
         using var fileStream = new FileStream(path, FileMode.Open);
         return LoadJpegNative<T>(fileStream);
@@ -330,7 +330,7 @@ public static class ImageExtensions
         return image;
     }
 
-    private unsafe static ImageNative<T> LoadJpegNative<T>(Stream stream) where T : unmanaged, IPixel<T>
+    private unsafe static ImageOtp<T> LoadJpegNative<T>(Stream stream) where T : unmanaged, IPixel<T>
     {
         var combiner = new Combiner();
 
@@ -365,7 +365,7 @@ public static class ImageExtensions
         var width = combiner.FrameInfo.Width;
         var height = combiner.FrameInfo.Height;
 
-        var image = new ImageNative<T>(width, height);
+        var image = new ImageOtp<T>(width, height);
 
         var processor = PixelProcessorFactory.GetProcessor<T>();
 
@@ -567,7 +567,7 @@ public static class ImageExtensions
         int width = frameInfo.Width;
         int height = frameInfo.Height;
 
-        var result = new ImageNative<Rgba32>(width, height);
+        var result = new ImageOtp<Rgba32>(width, height);
         var output = result.Pixels;
         for (int my = 0; my < mcuRows; my++)
         {

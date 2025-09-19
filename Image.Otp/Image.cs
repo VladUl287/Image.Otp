@@ -18,7 +18,7 @@ public readonly unsafe struct Image<T>(int width, int height) : IDisposable wher
     public void Dispose() { }
 }
 
-public unsafe struct ImageNative<T> : IDisposable where T : unmanaged
+public unsafe struct ImageOtp<T> : IDisposable where T : unmanaged
 {
     private readonly T* _buffer;
     private readonly int _length;
@@ -33,12 +33,12 @@ public unsafe struct ImageNative<T> : IDisposable where T : unmanaged
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            if (_disposed) throw new ObjectDisposedException(nameof(ImageNative<T>));
+            if (_disposed) throw new ObjectDisposedException(nameof(ImageOtp<T>));
             return new Span<T>(_buffer, _length);
         }
     }
 
-    public ImageNative(int width, int height, nuint alignment = 16)
+    public ImageOtp(int width, int height, nuint alignment = 16)
     {
         Width = width;
         Height = height;
@@ -50,7 +50,7 @@ public unsafe struct ImageNative<T> : IDisposable where T : unmanaged
     public readonly ref T GetPixel(int x, int y)
     {
         if (_disposed)
-            throw new ObjectDisposedException(nameof(ImageNative<T>));
+            throw new ObjectDisposedException(nameof(ImageOtp<T>));
 
         var index = y * Width + x;
         if (index < 0 || index >= _length)

@@ -6,6 +6,17 @@ namespace Image.Otp.Helpers;
 
 public static class JpegHelpres
 {
+    public static double[] DequantizeBlock(short[] quantizedCoeffs, ushort[] qTable)
+    {
+        double[] outBlock = new double[64];
+        for (int i = 0; i < 64; i++)
+        {
+            ushort qv = (i < qTable.Length) ? qTable[i] : (ushort)1;
+            outBlock[i] = quantizedCoeffs[i] * (double)qv;
+        }
+        return outBlock;
+    }
+
     public static double[] DequantizeBlock(short[] quantizedCoeffs, QuantizationTable qTable)
     {
         double[] outBlock = new double[64];

@@ -4,12 +4,16 @@ using Image.Otp.Console.Benchmarks;
 using Image.Otp.Extensions;
 using Image.Otp.Primitives;
 
-BenchmarkRunner.Run<JpegLoadBenchmark>();
-return;
+//BenchmarkRunner.Run<JpegLoadBenchmark>();
+//return;
+
+var processor = new JpgProcessor<Rgba32>();
+var image = processor.Process("C:\\Users\\User\\source\\repos\\images\\firstJpg.jpg");
+image.Dispose();
 
 //using var test = ImageExtensions.LoadJpegBase<Rgba32>("C:\\Users\\User\\source\\repos\\images\\firstJpg.jpg");
 //using var test2 = ImageExtensions.LoadJpegMemory<Rgba32>("C:\\Users\\User\\source\\repos\\images\\firstJpg.jpg");
-using var test3 = ImageExtensions.LoadJpegNative<Rgba32>("C:\\Users\\User\\source\\repos\\images\\firstJpg.jpg");
+//using var test3 = ImageExtensions.LoadJpegNative<Rgba32>("C:\\Users\\User\\source\\repos\\images\\firstJpg.jpg");
 
 //test.SaveAsBmp("C:\\Users\\User\\source\\repos\\images\\1.bmp");
 //test2.SaveAsBmp("C:\\Users\\User\\source\\repos\\images\\2.bmp");

@@ -48,10 +48,11 @@ public class JpegLoadBenchmark
     }
 
     [Benchmark]
-    public int LoadJpegImageSharpArray()
+    public int LoadJpegImageSharpMemoryStream()
     {
         var bytes = File.ReadAllBytes(JpegBaseLine);
-        using var image = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(bytes);
+        using var stream = new MemoryStream(bytes);
+        using var image = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(stream);
         var size = image.Width * image.Height;
         image.Dispose();
         return size;
@@ -62,6 +63,17 @@ public class JpegLoadBenchmark
     {
         using var stream = new FileStream(JpegBaseLine, FileMode.Open);
         using var image = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(stream);
+        var size = image.Width * image.Height;
+        image.Dispose();
+        return size;
+    }
+
+    private static readonly JpgProcessor<Rgba32> JpegProcessor = new JpgProcessor<Rgba32>();
+
+    [Benchmark]
+    public int LoadJpegLatest()
+    {
+        var image = JpegProcessor.Process("C:\\Users\\User\\source\\repos\\images\\firstJpg.jpg");
         var size = image.Width * image.Height;
         image.Dispose();
         return size;

@@ -1,6 +1,12 @@
 ﻿using Image.Otp.Constants;
+using Image.Otp.Helpers;
 using Image.Otp.Models.Jpeg;
 using Image.Otp.Pixels;
+using Image.Otp.Primitives;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
+using System.Runtime.Intrinsics;
 
 namespace Image.Otp.Extensions;
 
@@ -10,7 +16,8 @@ public static class JpegExtensions
     {
         public FrameInfo FrameInfo { get; set; } = default!;
 
-        public ScanInfo ScanInfo { get; set; } = default!;
+        public SOSSegment ScanInfo { get; set; } = default!;
+
 
         public Dictionary<byte, ushort[]> QuantTables { get; set; } = [];
 
@@ -21,7 +28,7 @@ public static class JpegExtensions
 
     public unsafe static ImageOtp<T> LoadJpeg<T>(this Stream stream) where T : unmanaged, IPixel<T>
     {
-        var image = new ImageOtp<T>(1, 1);
+        ImageOtp<T> image = default;
 
         var accumulator = new Accumulator();
 
@@ -53,9 +60,13 @@ public static class JpegExtensions
                         case JpegMarkers.SOF0:
                         case JpegMarkers.SOF2:
                             accumulator.FrameInfo = ProcessSOF(stream, stream.Position + length);
+                            image = new ImageOtp<T>(accumulator.FrameInfo.Width, accumulator.FrameInfo.Height);
                             break;
                         case JpegMarkers.DHT:
                             ProcessDHT(stream, stream.Position + length, accumulator.HuffmanTables);
+                            break;
+                        case JpegMarkers.SOS:
+                            accumulator.ScanInfo = ProcessSOS(stream, stream.Position + length, accumulator, image.Pixels);
                             break;
                         default:
                             stream.Seek(length, SeekOrigin.Current);
@@ -201,6 +212,379 @@ public static class JpegExtensions
             });
         }
     }
+
+    private static SOSSegment ProcessSOS<T>(Stream stream, long endPosition, Accumulator accumulator, Span<T> output) where T : unmanaged, IPixel<T>
+    {
+        const int MIN_LENGTH = 6;
+        const int NUM_COMPONENTS = 1; //1 byte (numComponents)
+        const int BYTES_PER_COMPONENT = 2;
+        const int SPECTRAL_LENGTH = 3; //3 bytes (Ss, Se, AhAl)
+
+        if (stream.Position > endPosition)
+            throw new InvalidDataException("Stream position exceeds segment boundary.");
+
+        var length = endPosition - stream.Position;
+        if (length < MIN_LENGTH)
+            throw new InvalidDataException($"SOS segment too short. Expected at least {MIN_LENGTH} bytes, got {length}.");
+
+        var numComponents = stream.ReadByte();
+
+        if (numComponents is < 1 or > 4)
+            throw new InvalidDataException($"Invalid number of components: {numComponents}. Must be between 1 and 4.");
+
+        var requredLength = NUM_COMPONENTS + (BYTES_PER_COMPONENT * numComponents) + SPECTRAL_LENGTH;
+        if (length != requredLength)
+            throw new InvalidDataException("SOS segment length mismatch.");
+
+        var components = new ScanComponent[numComponents];
+        for (int i = 0; i < numComponents; i++)
+        {
+            var componentId = (byte)stream.ReadByte();
+            var huffmanTableIds = (byte)stream.ReadByte();
+            components[i] = new ScanComponent
+            {
+                ComponentId = componentId,
+                DcHuffmanTableId = (byte)(huffmanTableIds >> 4),
+                AcHuffmanTableId = (byte)(huffmanTableIds & 0x0F)
+            };
+        }
+
+        byte ss = (byte)stream.ReadByte();
+        byte se = (byte)stream.ReadByte();
+        byte ahAl = (byte)stream.ReadByte();
+        byte ah = (byte)(ahAl >> 4);
+        byte al = (byte)(ahAl & 0x0F);
+
+        var huff = new Dictionary<(byte Class, byte Id), CanonicalHuffmanTable>(accumulator.HuffmanTables.Count);
+        foreach (var ht in accumulator.HuffmanTables)
+        {
+            var table = HuffmanTableLogic.BuildCanonical(ht.CodeLengths, ht.Symbols);
+            huff[(ht.Class, ht.Id)] = table;
+        }
+
+        accumulator.ScanInfo = new SOSSegment
+        {
+            Components = components,
+            Ss = ss,
+            Se = se,
+            Ah = ah,
+            Al = al
+        };
+
+        DecodeScanToBlocks(stream, huff, accumulator, output);
+
+        return accumulator.ScanInfo;
+    }
+
+    private static void DecodeScanToBlocks<T>(
+        Stream stream,
+        Dictionary<(byte Class, byte Id), CanonicalHuffmanTable> huff,
+        Accumulator acc,
+        Span<T> output) where T : unmanaged, IPixel<T>
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ArgumentNullException.ThrowIfNull(acc);
+        ArgumentNullException.ThrowIfNull(acc.FrameInfo);
+        ArgumentNullException.ThrowIfNull(acc.ScanInfo);
+
+        var frameInfo = acc.FrameInfo;
+        var scan = acc.ScanInfo;
+        var restartInterval = acc.RestartInterval;
+
+        if (scan.Ss != 0 || scan.Se != 63 || scan.Ah != 0 || scan.Al != 0)
+            throw new ArgumentException("This decoder only supports baseline non-progressive scans (Ss=0,Se=63,Ah=0,Al=0).");
+
+        var compMap = frameInfo.Components.ToDictionary(c => c.Id);
+
+        var scanComponents = scan.Components;
+
+        int maxH = frameInfo.Components.Max(c => c.HorizontalSampling);
+        int maxV = frameInfo.Components.Max(c => c.VerticalSampling);
+
+        int mcuCols = (frameInfo.Width + (8 * maxH - 1)) / (8 * maxH);
+        int mcuRows = (frameInfo.Height + (8 * maxV - 1)) / (8 * maxV);
+
+        var dcPredictor = new Dictionary<byte, int>(scanComponents.Length);
+        foreach (var sc in scanComponents) dcPredictor[sc.ComponentId] = 0;
+
+        var bitReader = new StreamBitReader(stream);
+
+        var componentBuffers = new Dictionary<byte, byte[]>();
+        foreach (var comp in frameInfo.Components)
+        {
+            componentBuffers[comp.Id] = new byte[frameInfo.Width * frameInfo.Height];
+            Array.Fill(componentBuffers[comp.Id], (byte)128);
+        }
+
+        int width = frameInfo.Width;
+        int height = frameInfo.Height;
+
+        for (int my = 0; my < mcuRows; my++)
+        {
+            for (int mx = 0; mx < mcuCols; mx++)
+            {
+                foreach (var sc in scanComponents)
+                {
+                    var comp = compMap[sc.ComponentId];
+
+                    if (!acc.QuantTables.TryGetValue(comp.QuantizationTableId, out var qTable))
+                    {
+                        throw new InvalidOperationException($"Quantization table {comp.QuantizationTableId} not found.");
+                    }
+
+                    int h = comp.HorizontalSampling;
+                    int v = comp.VerticalSampling;
+
+                    byte[] compBuffer = componentBuffers[comp.Id];
+
+                    int blocksPerMcu = h * v;
+
+                    var dcTable = huff[(0, sc.DcHuffmanTableId)];
+                    var acTable = huff[(1, sc.AcHuffmanTableId)];
+
+                    int scaleX = maxH / h;
+                    int scaleY = maxV / v;
+
+                    for (int by = 0; by < v; by++)
+                    {
+                        for (int bx = 0; bx < h; bx++)
+                        {
+                            short[] block = new short[64];
+
+                            block[0] = GetDc(dcPredictor, bitReader, sc, dcTable);
+
+                            SetAc(bitReader, acTable, block);
+
+                            block = JpegDecoderHelpers.NaturalToZigzag(block);
+
+                            double[] dequant = JpegHelpres.DequantizeBlock(block, qTable);
+                            double[] samples = new double[64];
+                            JpegHelpres.InverseDCT8x8(dequant, samples);
+
+                            var blockStartX = mx * maxH * 8 + bx * 8 * scaleX;
+                            var blockStartY = my * maxV * 8 + by * 8 * scaleY;
+
+                            //UpsamplingScalarFallback(blockStartX, blockStartY, width, height, scaleX, scaleY, compBuffer, samples);
+                            UpsamplingSimd(maxH, maxV, width, height, my, mx, compBuffer, scaleX, scaleY, by, bx, samples);
+                        }
+                    }
+                }
+            }
+        }
+
+        byte[] yBuffer = componentBuffers[1];
+        byte[] cbBuffer = componentBuffers.ContainsKey(2) ? componentBuffers[2] : null;
+        byte[] crBuffer = componentBuffers.ContainsKey(3) ? componentBuffers[3] : null;
+
+        if (typeof(T) == typeof(Rgba32))
+        {
+            Span<Rgba32> rgbaOutput = MemoryMarshal.Cast<T, Rgba32>(output);
+
+            for (int i = 0; i < width * height; i++)
+            {
+                byte yVal = yBuffer[i];
+                byte cbVal = cbBuffer != null ? cbBuffer[i] : (byte)128;
+                byte crVal = crBuffer != null ? crBuffer[i] : (byte)128;
+
+                double Yd = yVal;
+                double Cbd = cbVal - 128.0;
+                double Crd = crVal - 128.0;
+
+                int r = (int)Math.Round(Yd + 1.402 * Crd);
+                int g = (int)Math.Round(Yd - 0.344136 * Cbd - 0.714136 * Crd);
+                int b = (int)Math.Round(Yd + 1.772 * Cbd);
+
+                r = Math.Clamp(r, 0, 255);
+                g = Math.Clamp(g, 0, 255);
+                b = Math.Clamp(b, 0, 255);
+
+                rgbaOutput[i] = new Rgba32((byte)r, (byte)g, (byte)b);
+            }
+        }
+
+        static short GetDc(Dictionary<byte, int> dcPredictor, StreamBitReader bitReader, ScanComponent sc, CanonicalHuffmanTable dcTable)
+        {
+            var sym = JpegHelpres.DecodeHuffmanSymbol(bitReader, dcTable);
+            if (sym < 0)
+                throw new EndOfStreamException("Marker or EOF encountered while decoding DC.");
+
+            var magnitude = sym; // number of additional bits
+            var dcDiff = 0;
+
+            if (magnitude > 0)
+            {
+                var bits = bitReader.ReadBits(magnitude, false);
+                if (bits < 0)
+                    throw new EndOfStreamException("EOF/marker while reading DC bits.");
+
+                dcDiff = JpegDecoderHelpers.ExtendSign(bits, magnitude);
+            }
+
+            var prevDc = dcPredictor[sc.ComponentId];
+            var dcVal = prevDc + dcDiff;
+            dcPredictor[sc.ComponentId] = dcVal;
+            return (short)dcVal;
+        }
+
+        static void SetAc(StreamBitReader bitReader, CanonicalHuffmanTable acTable, short[] block)
+        {
+            int k = 1;
+            while (k < 64)
+            {
+                int acSym = JpegHelpres.DecodeHuffmanSymbol(bitReader, acTable);
+                if (acSym < 0)
+                    throw new EndOfStreamException("Marker or EOF encountered while decoding AC.");
+
+                if (acSym == 0x00)
+                {
+                    break;
+                }
+                if (acSym == 0xF0)
+                {
+                    k += 16;
+                    continue;
+                }
+                int run = (acSym >> 4) & 0x0F;
+                int size = acSym & 0x0F;
+                k += run;
+                if (k >= 64)
+                    throw new InvalidDataException("Run exceeds block size while decoding AC.");
+
+                int bits = 0;
+                if (size > 0)
+                {
+                    bits = bitReader.ReadBits(size, false);
+                    if (bits < 0) throw new EndOfStreamException("EOF/marker while reading AC bits.");
+                }
+
+                int level = JpegDecoderHelpers.ExtendSign(bits, size);
+                block[k] = (short)level;
+                k++;
+            }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void UpsamplingSimd(int maxH, int maxV, int width, int height, int my, int mx,
+        byte[] compBuffer, int scaleX, int scaleY, int by, int bx, double[] samples)
+    {
+        const int BlockSize = 8;
+
+        var blockStartX = mx * maxH * BlockSize + bx * BlockSize * scaleX;
+        var blockStartY = my * maxV * BlockSize + by * BlockSize * scaleY;
+
+        if (Avx2.IsSupported && scaleX == 1 && scaleY == 1)
+        {
+
+        }
+
+        if (Sse2.IsSupported && scaleX == 1 && scaleY == 1)
+        {
+        }
+
+        UpsamplingScalarFallback(blockStartX, blockStartY, width, height, scaleX, scaleY, compBuffer, samples);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private unsafe static void UpsamplingSimdSse2(int blockStartX, int blockStartY, int width, int height, byte[] compBuffer, double[] samples)
+    {
+        const int BlockSize = 8;
+
+        var startY = Math.Max(blockStartY, 0);
+        var endY = Math.Min(blockStartY + BlockSize, height);
+        var startX = Math.Max(blockStartX, 0);
+        var endX = Math.Min(blockStartX + BlockSize, width);
+
+        for (int sy = 0; sy < BlockSize; sy++)
+        {
+            int outY = blockStartY + sy;
+            if (outY < 0 || outY >= height) continue;
+
+            int rowOffset = outY * width;
+
+            for (int sx = 0; sx < BlockSize; sx += 4)
+            {
+                // Convert 4 doubles to bytes
+                var offset = Vector128.Create(128.0);
+                var sampleVec1 = Vector128.Create(
+                    samples[sy * BlockSize + sx + 0],
+                    samples[sy * BlockSize + sx + 1]
+                );
+                var sampleVec2 = Vector128.Create(
+                    samples[sy * BlockSize + sx + 2],
+                    samples[sy * BlockSize + sx + 3]
+                );
+
+                var result1 = Sse2.Add(sampleVec1, offset);
+                var result2 = Sse2.Add(sampleVec2, offset);
+
+                var intResult1 = Sse2.ConvertToVector128Int32(result1);
+                var intResult2 = Sse2.ConvertToVector128Int32(result2);
+
+                var shortResult = Sse2.PackSignedSaturate(intResult1, intResult2);
+                var byteResult = Sse2.PackUnsignedSaturate(shortResult, shortResult);
+
+                byte* pixelValues = stackalloc byte[16];
+                Sse2.Store(pixelValues, byteResult);
+
+                for (int i = 0; i < 4; i++)
+                {
+                    int outX = blockStartX + sx + i;
+                    if (outX < startX || outX >= endX) continue;
+
+                    compBuffer[rowOffset + outX] = pixelValues[i];
+                }
+            }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void UpsamplingScalarFallback(int blockStartX, int blockStartY, int width, int height, int scaleX, int scaleY, byte[] compBuffer, double[] samples)
+    {
+        const int BlockSize = 8;
+
+        for (int sy = 0; sy < BlockSize; sy++)
+        {
+            for (int sx = 0; sx < BlockSize; sx++)
+            {
+                byte pixelValue = ConvertSampleToByte(samples[sy * BlockSize + sx]);
+
+                int baseX = blockStartX + sx * scaleX;
+                int baseY = blockStartY + sy * scaleY;
+
+                FillScaledBlock(pixelValue, baseX, baseY, scaleX, scaleY, width, height, compBuffer);
+            }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte ConvertSampleToByte(double sample)
+    {
+        const double SampleOffset = 128.0;
+        var value = (int)Math.Round(sample + SampleOffset);
+        return (byte)Math.Clamp(value, 0, 255);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void FillScaledBlock(byte pixelValue, int baseX, int baseY,
+        int scaleX, int scaleY, int width, int height, byte[] buffer)
+    {
+        var endY = Math.Min(baseY + scaleY, height);
+        var endX = Math.Min(baseX + scaleX, width);
+
+        var startY = Math.Max(baseY, 0);
+        var startX = Math.Max(baseX, 0);
+
+        for (var y = startY; y < endY; y++)
+        {
+            var rowOffset = y * width;
+            for (var x = startX; x < endX; x++)
+            {
+                buffer[rowOffset + x] = pixelValue;
+            }
+        }
+    }
+
 
     //public unsafe static ImageOtp<T> LoadJpeg<T>(this Stream stream) where T : unmanaged, IPixel<T>
     //{

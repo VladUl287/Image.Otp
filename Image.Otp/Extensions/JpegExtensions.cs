@@ -480,6 +480,8 @@ public static class JpegExtensions
 
         if (Sse2.IsSupported && scaleX == 1 && scaleY == 1)
         {
+            //UpsamplingSimdSse2(blockStartX, blockStartY, width, height, compBuffer, samples);
+            //return;
         }
 
         UpsamplingScalarFallback(blockStartX, blockStartY, width, height, scaleX, scaleY, compBuffer, samples);

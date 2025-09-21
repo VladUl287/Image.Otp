@@ -364,7 +364,6 @@ public static class JpegExtensions
                             var blockStartX = mx * maxH * 8 + bx * 8 * scaleX;
                             var blockStartY = my * maxV * 8 + by * 8 * scaleY;
 
-                            //UpsamplingScalarFallback(blockStartX, blockStartY, width, height, scaleX, scaleY, compBuffer, samples);
                             UpsamplingSimd(maxH, maxV, width, height, my, mx, compBuffer, scaleX, scaleY, by, bx, samples);
                         }
                     }

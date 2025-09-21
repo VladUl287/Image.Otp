@@ -2,8 +2,6 @@
 
 public sealed class CanonicalHuffmanTable
 {
-    public Guid Id { get; init; } = Guid.NewGuid();
-
     public readonly Dictionary<int, byte>[] _byLength; // index 1..16
 
     public CanonicalHuffmanTable()

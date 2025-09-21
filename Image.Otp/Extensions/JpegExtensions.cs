@@ -540,20 +540,21 @@ public static class JpegExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void UpsamplingScalarFallback(int blockStartX, int blockStartY, int width, int height, int scaleX, int scaleY, byte[] compBuffer, double[] samples)
+    private static void UpsamplingScalarFallback(int blockStartX, int blockStartY, int width, int height, int scaleX, int scaleY, 
+        byte[] output, double[] block)
     {
-        const int BlockSize = 8;
+        const int BLOCK_SIZE = 8;
 
-        for (int sy = 0; sy < BlockSize; sy++)
+        for (int sy = 0; sy < BLOCK_SIZE; sy++)
         {
-            for (int sx = 0; sx < BlockSize; sx++)
+            for (int sx = 0; sx < BLOCK_SIZE; sx++)
             {
-                byte pixelValue = ConvertSampleToByte(samples[sy * BlockSize + sx]);
+                var pixel = ConvertSampleToByte(block[sy * BLOCK_SIZE + sx]);
 
-                int baseX = blockStartX + sx * scaleX;
-                int baseY = blockStartY + sy * scaleY;
+                var baseX = blockStartX + sx * scaleX;
+                var baseY = blockStartY + sy * scaleY;
 
-                FillScaledBlock(pixelValue, baseX, baseY, scaleX, scaleY, width, height, compBuffer);
+                FillScaledBlock(pixel, baseX, baseY, scaleX, scaleY, width, height, output);
             }
         }
     }
@@ -561,14 +562,14 @@ public static class JpegExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte ConvertSampleToByte(double sample)
     {
-        const double SampleOffset = 128.0;
-        var value = (int)Math.Round(sample + SampleOffset);
+        const double OFFSET = 128.0;
+        var value = (int)Math.Round(sample + OFFSET);
         return (byte)Math.Clamp(value, 0, 255);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void FillScaledBlock(byte pixelValue, int baseX, int baseY,
-        int scaleX, int scaleY, int width, int height, byte[] buffer)
+        int scaleX, int scaleY, int width, int height, byte[] output)
     {
         var endY = Math.Min(baseY + scaleY, height);
         var endX = Math.Min(baseX + scaleX, width);
@@ -581,7 +582,7 @@ public static class JpegExtensions
             var rowOffset = y * width;
             for (var x = startX; x < endX; x++)
             {
-                buffer[rowOffset + x] = pixelValue;
+                output[rowOffset + x] = pixelValue;
             }
         }
     }

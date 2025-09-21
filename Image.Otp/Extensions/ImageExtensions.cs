@@ -956,14 +956,10 @@ public static class ImageExtensions
         var components = new ComponentInfo[numComponents];
         for (int i = 0; i < numComponents; i++)
         {
-            var id = (byte)stream.ReadByte();
-            var samplingFactor = (byte)stream.ReadByte();
             components[i] = new ComponentInfo
             {
-                Id = id,
-                SamplingFactor = samplingFactor,
-                HorizontalSampling = (byte)(samplingFactor >> 4),   // Upper 4 bits
-                VerticalSampling = (byte)(samplingFactor & 0x0F),   // Lower 4 bits
+                Id = (byte)stream.ReadByte(),
+                SamplingFactor = (byte)stream.ReadByte(),
                 QuantizationTableId = (byte)stream.ReadByte()
             };
         }

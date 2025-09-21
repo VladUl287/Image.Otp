@@ -87,8 +87,6 @@ public static class JpegTableDecoder
             {
                 Id = seg.Data[pos],
                 SamplingFactor = seg.Data[pos + 1],
-                HorizontalSampling = (byte)(seg.Data[pos + 1] >> 4),   // Upper 4 bits
-                VerticalSampling = (byte)(seg.Data[pos + 1] & 0x0F),   // Lower 4 bits
                 QuantizationTableId = seg.Data[pos + 2]
             });
             pos += 3;

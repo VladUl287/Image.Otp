@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
 using System.Runtime.Intrinsics;
+using Image.Otp.Helpers.Jpg;
 
 namespace Image.Otp.Extensions;
 
@@ -349,7 +350,7 @@ public static class JpegExtensions
                     {
                         for (int bx = 0; bx < h; bx++)
                         {
-                            short[] block = new short[64];
+                            var block = new double[64];
 
                             block[0] = GetDc(dcPredictor, bitReader, sc, dcTable);
 
@@ -357,7 +358,8 @@ public static class JpegExtensions
 
                             block = JpegDecoderHelpers.NaturalToZigzag(block);
 
-                            double[] dequant = JpegHelpres.DequantizeBlock(block, qTable);
+                            double[] dequant = block.DequantizeInPlace(qTable);
+
                             double[] samples = new double[64];
                             JpegHelpres.InverseDCT8x8(dequant, samples);
 
@@ -425,7 +427,7 @@ public static class JpegExtensions
             return (short)dcVal;
         }
 
-        static void SetAc(StreamBitReader bitReader, CanonicalHuffmanTable acTable, short[] block)
+        static void SetAc(StreamBitReader bitReader, CanonicalHuffmanTable acTable, double[] block)
         {
             int k = 1;
             while (k < 64)

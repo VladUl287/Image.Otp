@@ -19,7 +19,7 @@ public static class JpegExtensions
         public SOSSegment ScanInfo { get; set; } = default!;
 
 
-        public Dictionary<byte, ushort[]> QuantTables { get; set; } = [];
+        public Dictionary<byte, double[]> QuantTables { get; set; } = [];
 
         public List<HuffmanTable> HuffmanTables { get; set; } = [];
 
@@ -79,7 +79,7 @@ public static class JpegExtensions
         return image;
     }
 
-    private static void ProcessDQT(Stream stream, long endPosition, Dictionary<byte, ushort[]> qTables)
+    private static void ProcessDQT(Stream stream, long endPosition, Dictionary<byte, double[]> qTables)
     {
         while (stream.Position < endPosition)
         {
@@ -96,7 +96,7 @@ public static class JpegExtensions
 
             const int SIZE = 64;
 
-            var raw = new ushort[SIZE];
+            var raw = new double[SIZE];
             if (pq == 0)
             {
                 if (stream.Position + SIZE > endPosition)
@@ -107,7 +107,7 @@ public static class JpegExtensions
                 //MemoryMarshal.Cast<byte, ushort>(buffer).CopyTo(raw);
 
                 for (int i = 0; i < SIZE; i++)
-                    raw[i] = (ushort)stream.ReadByte();
+                    raw[i] = stream.ReadByte();
             }
             else
             {
@@ -115,7 +115,7 @@ public static class JpegExtensions
                     throw new InvalidDataException("Truncated DQT segment for 16-bit table.");
 
                 for (int i = 0; i < SIZE; i++)
-                    raw[i] = (ushort)stream.ReadBigEndianUInt16();
+                    raw[i] = stream.ReadBigEndianUInt16();
             }
 
             qTables[tq] = raw;

@@ -2,9 +2,8 @@
 
 public static class JpegDecoderHelpers
 {
-    // Standard zig-zag map (index in zigzag -> row-major index)
     public static readonly int[] ZigZag =
-    {
+    [
          0,  1,  5,  6, 14, 15, 27, 28,
          2,  4,  7, 13, 16, 26, 29, 42,
          3,  8, 12, 17, 25, 30, 41, 43,
@@ -13,36 +12,45 @@ public static class JpegDecoderHelpers
         20, 22, 33, 38, 46, 51, 55, 60,
         21, 34, 37, 47, 50, 56, 59, 61,
         35, 36, 48, 49, 57, 58, 62, 63
-    };
-
-    // Convert zigzag-ordered coefficients to row-major 8x8
-    public static short[] ZigZagToBlock(short[] zz)
-    {
-        var blk = new short[64];
-        for (int i = 0; i < 64; i++)
-        {
-            int pos = ZigZag[i];
-            blk[pos] = zz[i];
-        }
-        return blk;
-    }
+    ];
 
     public static short[] NaturalToZigzag(short[] natural)
     {
         var zz = new short[64];
         for (var i = 0; i < 64; i++)
         {
-            // ZigZag[pos] = naturalIndex for zigzag position pos
             zz[i] = natural[ZigZag[i]];
         }
         return zz;
     }
 
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <param name="natural"></param>
-    /// <returns>New array with zigzag order</returns>
+    public static double[] NaturalToZigzag(double[] natural)
+    {
+        var zz = new double[64];
+        for (var i = 0; i < 64; i++)
+        {
+            zz[i] = natural[ZigZag[i]];
+        }
+        return zz;
+    }
+
+    private const int BLOCK_SIZE = 64;
+
+    public static double[] ZigzagInPlace(this double[] block)
+    {
+        if (block.Length != BLOCK_SIZE)
+            throw new ArgumentException("Array must have exactly 64 elements");
+
+        Span<double> temp = stackalloc double[BLOCK_SIZE];
+        for (int i = 0; i < BLOCK_SIZE; i++)
+        {
+            temp[i] = block[ZigZag[i]];
+        }
+        temp.CopyTo(block);
+
+        return block;
+    }
+
     public static ushort[] NaturalToZigzag(ushort[] natural)
     {
         var zz = new ushort[64];
@@ -53,17 +61,6 @@ public static class JpegDecoderHelpers
         return zz;
     }
 
-    public static short[] ZigZagToNatural(short[] zz)
-    {
-        var natural = new short[64];
-        for (int i = 0; i < 64; i++)
-        {
-            natural[ZigZag[i]] = zz[i];
-        }
-        return natural;
-    }
-
-    // Extend value for JPEG variable length signed numbers
     public static int ExtendSign(int value, int bitCount)
     {
         if (bitCount == 0) return 0;

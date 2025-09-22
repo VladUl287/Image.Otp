@@ -356,9 +356,8 @@ public static class JpegExtensions
 
                             SetAc(bitReader, acTable, block);
 
-                            block = JpegDecoderHelpers.NaturalToZigzag(block);
-
                             block = block
+                                .ZigzagInPlace()
                                 .DequantizeInPlace(qTable)
                                 .Idct8x8InPlace();
 

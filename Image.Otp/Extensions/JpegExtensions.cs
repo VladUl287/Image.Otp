@@ -358,15 +358,14 @@ public static class JpegExtensions
 
                             block = JpegDecoderHelpers.NaturalToZigzag(block);
 
-                            double[] dequant = block.DequantizeInPlace(qTable);
-
-                            double[] samples = new double[64];
-                            JpegHelpres.InverseDCT8x8(dequant, samples);
+                            block = block
+                                .DequantizeInPlace(qTable)
+                                .Idct8x8InPlace();
 
                             var blockStartX = mx * maxH * 8 + bx * 8 * scaleX;
                             var blockStartY = my * maxV * 8 + by * 8 * scaleY;
 
-                            UpsamplingSimd(maxH, maxV, width, height, my, mx, compBuffer, scaleX, scaleY, by, bx, samples);
+                            UpsamplingSimd(maxH, maxV, width, height, my, mx, compBuffer, scaleX, scaleY, by, bx, block);
                         }
                     }
                 }
@@ -542,7 +541,7 @@ public static class JpegExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void UpsamplingScalarFallback(int blockStartX, int blockStartY, int width, int height, int scaleX, int scaleY, 
+    private static void UpsamplingScalarFallback(int blockStartX, int blockStartY, int width, int height, int scaleX, int scaleY,
         byte[] output, double[] block)
     {
         const int BLOCK_SIZE = 8;

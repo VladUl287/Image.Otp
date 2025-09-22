@@ -23,7 +23,7 @@ public static class InverseDCT
                 double sum = 0.0;
                 for (int u = 0; u < 8; u++)
                 {
-                    sum += Coefficient(u) * block[y * 8 + u] * Math.Cos(((2 * x + 1) * u * Math.PI) / 16.0);
+                    sum += Coefficient(u) * block[y * 8 + u] * Math.Cos((2 * x + 1) * u * Math.PI / 16.0);
                 }
                 tmp[y * 8 + x] = sum * 0.5;
             }
@@ -37,7 +37,7 @@ public static class InverseDCT
                 double sum = 0.0;
                 for (int v = 0; v < 8; v++)
                 {
-                    sum += Coefficient(v) * tmp[v * 8 + x] * Math.Cos(((2 * y + 1) * v * Math.PI) / 16.0);
+                    sum += Coefficient(v) * tmp[v * 8 + x] * Math.Cos((2 * y + 1) * v * Math.PI / 16.0);
                 }
                 block[y * 8 + x] = sum * 0.5;
             }

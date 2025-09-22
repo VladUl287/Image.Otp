@@ -47,5 +47,5 @@ public static class InverseDCT
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double Coefficient(int u) => u == 0 ? 1.0 / Math.Sqrt(2.0) : 1.0;
+    public static double Coefficient(int u) => u == 0 ? 1.0 / Math.Sqrt(2.0) : 1.0;
 }

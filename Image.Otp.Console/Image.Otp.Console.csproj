@@ -15,7 +15,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Image.Opt\Image.Otp.csproj" />
     <ProjectReference Include="..\Image.Otp\Image.Otp.csproj" />
   </ItemGroup>
 

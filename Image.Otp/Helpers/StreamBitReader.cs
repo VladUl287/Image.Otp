@@ -1,4 +1,6 @@
-﻿namespace Image.Otp.Helpers;
+﻿using System.Buffers;
+
+namespace Image.Otp.Helpers;
 
 public class StreamBitReader(Stream stream)
 {
@@ -21,14 +23,12 @@ public class StreamBitReader(Stream stream)
             int b = ReadByte();
             if (b < 0) return -1;
 
-            // Handle JPEG byte stuffing (0xFF followed by 0x00)
             if (b == 0xFF)
             {
                 int next = ReadByte();
                 if (next == -1) return -1;
                 if (next != 0x00)
                 {
-                    // Put both bytes back into the stream
                     stream.Seek(-2, SeekOrigin.Current);
                     return -1;
                 }
@@ -52,31 +52,61 @@ public class StreamBitReader(Stream stream)
     {
         if (n == 0) return 0;
 
-        // Read the bits
-        int[] bits = new int[n];
-        for (int i = 0; i < n; i++)
-        {
-            int b = ReadBit();
-            if (b < 0) return -1;
-            bits[i] = b;
-        }
+        const int StackAllocThreshold = 64;
 
+        if (n <= StackAllocThreshold)
+        {
+            Span<int> bits = stackalloc int[n];
+
+            for (int i = 0; i < n; i++)
+            {
+                int b = ReadBit();
+                if (b < 0) return -1;
+                bits[i] = b;
+            }
+
+            return ProcessBits(bits, signed);
+        }
+        else
+        {
+            var bits = ArrayPool<int>.Shared.Rent(n);
+            try
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    int b = ReadBit();
+                    if (b < 0) return -1;
+                    bits[i] = b;
+                }
+
+                return ProcessBits(bits.AsSpan(0, n), signed);
+            }
+            finally
+            {
+                ArrayPool<int>.Shared.Return(bits);
+            }
+        }
+    }
+
+    private static int ProcessBits(Span<int> bits, bool signed)
+    {
         if (signed)
         {
-            // Handle signed numbers (JPEG coefficient format)
-            if (bits[0] == 1) // Positive number
+            if (bits[0] == 1) // Positive
             {
                 return BitsToNumber(bits);
             }
-            else // Negative number - flip all bits and make negative
+            else // Negative
             {
-                int[] flippedBits = bits.Select(b => 1 - b).ToArray();
-                return -BitsToNumber(flippedBits);
+                for (int i = 0; i < bits.Length; i++)
+                {
+                    bits[i] = 1 - bits[i];
+                }
+                return -BitsToNumber(bits);
             }
         }
         else
         {
-            // Unsigned number
             return BitsToNumber(bits);
         }
     }
@@ -87,26 +117,14 @@ public class StreamBitReader(Stream stream)
         return ReadByte();
     }
 
-    private static int BitsToNumber(int[] bits)
+    private static int BitsToNumber(Span<int> bits) => BitsToNumber(bits, bits.Length);
+    private static int BitsToNumber(Span<int> bits, int length)
     {
-        int res = 0;
-        foreach (int bit in bits)
+        var res = 0;
+        for (int i = 0; i < length; i++)
         {
-            res = (res << 1) | bit;
+            res = (res << 1) | bits[i];
         }
         return res;
-    }
-
-    public void Seek(long offset, SeekOrigin origin)
-    {
-        if (stream.CanSeek)
-        {
-            AlignToByte(); // Clear any buffered bits before seeking
-            stream.Seek(offset, origin);
-        }
-        else
-        {
-            throw new NotSupportedException("Stream does not support seeking");
-        }
     }
 }

@@ -3,11 +3,9 @@ using Image.Otp.Helpers;
 using Image.Otp.Models.Jpeg;
 using Image.Otp.Pixels;
 using Image.Otp.Primitives;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics.X86;
-using System.Runtime.Intrinsics;
 using Image.Otp.Helpers.Jpg;
+using System.Buffers;
 
 namespace Image.Otp.Extensions;
 
@@ -295,9 +293,9 @@ public static class JpegExtensions
         if (scan.Ss != 0 || scan.Se != 63 || scan.Ah != 0 || scan.Al != 0)
             throw new ArgumentException("This decoder only supports baseline non-progressive scans (Ss=0,Se=63,Ah=0,Al=0).");
 
-        var compMap = frameInfo.Components.ToDictionary(c => c.Id);
+        var sofComponents = frameInfo.Components.ToDictionary(c => c.Id);
 
-        var scanComponents = scan.Components;
+        var sosComponents = scan.Components;
 
         int maxH = frameInfo.Components.Max(c => c.HorizontalSampling);
         int maxV = frameInfo.Components.Max(c => c.VerticalSampling);
@@ -305,15 +303,15 @@ public static class JpegExtensions
         int mcuCols = (frameInfo.Width + (8 * maxH - 1)) / (8 * maxH);
         int mcuRows = (frameInfo.Height + (8 * maxV - 1)) / (8 * maxV);
 
-        var dcPredictor = new Dictionary<byte, int>(scanComponents.Length);
-        foreach (var sc in scanComponents) dcPredictor[sc.ComponentId] = 0;
+        var dcPredictor = new Dictionary<byte, int>(sosComponents.Length);
+        foreach (var sc in sosComponents) dcPredictor[sc.ComponentId] = 0;
 
         var bitReader = new StreamBitReader(stream);
 
         var componentBuffers = new Dictionary<byte, byte[]>();
         foreach (var comp in frameInfo.Components)
         {
-            componentBuffers[comp.Id] = new byte[frameInfo.Width * frameInfo.Height];
+            componentBuffers[comp.Id] = ArrayPool<byte>.Shared.Rent(frameInfo.Width * frameInfo.Height);
             Array.Fill(componentBuffers[comp.Id], (byte)128);
         }
 
@@ -324,9 +322,9 @@ public static class JpegExtensions
         {
             for (int mx = 0; mx < mcuCols; mx++)
             {
-                foreach (var sc in scanComponents)
+                foreach (var sc in sosComponents)
                 {
-                    var comp = compMap[sc.ComponentId];
+                    var comp = sofComponents[sc.ComponentId];
 
                     if (!acc.QuantTables.TryGetValue(comp.QuantizationTableId, out var qTable))
                     {
@@ -350,7 +348,7 @@ public static class JpegExtensions
                     {
                         for (int bx = 0; bx < h; bx++)
                         {
-                            var block = new double[64];
+                            var block = ArrayPool<double>.Shared.Rent(64);
 
                             block[0] = GetDc(dcPredictor, bitReader, sc, dcTable);
 
@@ -365,6 +363,8 @@ public static class JpegExtensions
                             var blockStartY = my * maxV * 8 + by * 8 * scaleY;
 
                             compBuffer.UpsampleInPlace(block, maxH, maxV, width, height, my, mx, scaleX, scaleY, by, bx);
+
+                            ArrayPool<double>.Shared.Return(block, true);
                         }
                     }
                 }
@@ -401,6 +401,10 @@ public static class JpegExtensions
             }
         }
 
+        ArrayPool<byte>.Shared.Return(yBuffer, true);
+        if (cbBuffer is not null) ArrayPool<byte>.Shared.Return(cbBuffer, true);
+        if (crBuffer is not null) ArrayPool<byte>.Shared.Return(crBuffer, true);
+
         static short GetDc(Dictionary<byte, int> dcPredictor, StreamBitReader bitReader, ScanComponent sc, CanonicalHuffmanTable dcTable)
         {
             var sym = JpegHelpres.DecodeHuffmanSymbol(bitReader, dcTable);
@@ -422,6 +426,7 @@ public static class JpegExtensions
             var prevDc = dcPredictor[sc.ComponentId];
             var dcVal = prevDc + dcDiff;
             dcPredictor[sc.ComponentId] = dcVal;
+
             return (short)dcVal;
         }
 

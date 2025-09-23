@@ -89,8 +89,7 @@ public static class JpegExtensions
                 throw new InvalidDataException($"DQT table ID {tq} is invalid. Must be 0-3.");
 
             var pq = (pqTq >> 4) & 0x0F;   // precision: 0 = 8-bit, 1 = 16-bit
-            //TODO: compare performace (pq != 0 && pq != 1)
-            if ((uint)pq > 1u)
+            if (pq != 0 && pq != 1)
                 throw new InvalidDataException($"Unsupported DQT precision {pq} in table {tq}.");
 
             const int SIZE = 64;

@@ -2,26 +2,82 @@
 
 public sealed class CanonicalHuffmanTable
 {
-    public readonly Dictionary<int, byte>[] _byLength; // index 1..16
+    private ushort[] _codeData; // Packed: symbol in low 8 bits, code length in high 8 bits
+    private readonly ushort[] _firstCode; // First code for each length (1-16)
+    private readonly byte[] _symbolIndex; // Index into _codeData for each length
 
     public CanonicalHuffmanTable()
     {
-        _byLength = new Dictionary<int, byte>[17];
-        for (int i = 0; i <= 16; i++) 
-            _byLength[i] = [];
+        _codeData = [];
+        _firstCode = new ushort[17]; // Index 1-16
+        _symbolIndex = new byte[17]; // Index 1-16
     }
 
-    public void Add(int code, int length, byte symbol)
+    public void Initialize(Span<byte> lengths, Span<byte> symbols)
     {
-        if (length <= 0 || length > 16) throw new ArgumentOutOfRangeException(nameof(length));
-        _byLength[length][code] = symbol;
+        if (lengths.Length != 16)
+            throw new ArgumentException("Lengths array must have exactly 16 elements", nameof(lengths));
+
+        // Calculate total symbols
+        int totalSymbols = 0;
+        for (int i = 0; i < 16; i++)
+            totalSymbols += lengths[i];
+
+        if (symbols.Length < totalSymbols)
+            throw new ArgumentException("Symbols array doesn't contain enough elements", nameof(symbols));
+
+        // Allocate arrays (reuse if possible, but we'll create new ones for simplicity)
+        _codeData = new ushort[totalSymbols];
+
+        // Build canonical codes
+        int code = 0;
+        int symbolIndex = 0;
+        int dataIndex = 0;
+
+        for (int bits = 1; bits <= 16; bits++)
+        {
+            int count = lengths[bits - 1];
+            _firstCode[bits] = (ushort)code;
+            _symbolIndex[bits] = (byte)dataIndex;
+
+            for (int i = 0; i < count; i++)
+            {
+                byte symbol = symbols[symbolIndex++];
+                // Pack symbol (low 8 bits) and code length (high 8 bits)
+                _codeData[dataIndex++] = (ushort)((bits << 8) | symbol);
+                code++;
+            }
+
+            if (bits < 16)
+                code <<= 1;
+        }
     }
 
     public bool TryGetSymbol(int code, int length, out byte symbol)
     {
         symbol = 0;
-        if (length <= 0 || length > 16) return false;
-        return _byLength[length].TryGetValue(code, out symbol);
+
+        if (length <= 0 || length > 16)
+            return false;
+
+        int firstCode = _firstCode[length];
+        if (code < firstCode)
+            return false;
+
+        int index = _symbolIndex[length] + (code - firstCode);
+
+        if (index >= _codeData.Length)
+            return false;
+
+        // Verify this entry has the correct length (sanity check)
+        ushort packed = _codeData[index];
+        int entryLength = packed >> 8;
+
+        if (entryLength != length)
+            return false;
+
+        symbol = (byte)(packed & 0xFF);
+        return true;
     }
 }
 
@@ -33,7 +89,6 @@ public sealed class HuffmanTableLogic
             throw new ArgumentException("Lengths array must have exactly 16 elements", nameof(lengths));
 
         symbols ??= [];
-
         return BuildCanonical(lengths.AsSpan(), symbols.AsSpan());
     }
 
@@ -42,36 +97,8 @@ public sealed class HuffmanTableLogic
         if (lengths.Length != 16)
             throw new ArgumentException("Lengths array must have exactly 16 elements", nameof(lengths));
 
-        var totalCodes = 0;
-        for (int i = 0; i < 16; i++)
-            totalCodes += lengths[i];
-
-        if (symbols.Length < totalCodes)
-            throw new ArgumentException("Symbols array doesn't contain enough elements", nameof(symbols));
-
         var table = new CanonicalHuffmanTable();
-
-        int code = 0;
-        int symbolIndex = 0;
-
-        for (int bits = 1; bits <= 16; bits++)
-        {
-            int count = lengths[bits - 1];
-
-            for (int i = 0; i < count; i++)
-            {
-                if (symbolIndex >= symbols.Length)
-                    throw new InvalidOperationException("Symbol index out of range");
-
-                byte sym = symbols[symbolIndex++];
-                table.Add(code, bits, sym);
-                code++;
-            }
-
-            if (bits < 16)
-                code <<= 1;
-        }
-
+        table.Initialize(lengths, symbols);
         return table;
     }
 

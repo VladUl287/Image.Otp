@@ -11,16 +11,15 @@ namespace Image.Otp.Extensions;
 
 public static class JpegExtensions
 {
-    public sealed class Accumulator
+    private sealed class Accumulator
     {
         public FrameInfo FrameInfo { get; set; } = default!;
 
         public SOSSegment ScanInfo { get; set; } = default!;
 
-
         public Dictionary<byte, double[]> QuantTables { get; set; } = [];
 
-        public List<HuffmanTable> HuffmanTables { get; set; } = [];
+        public Dictionary<(byte Class, byte Id), CanonicalHuffmanTable> CanonicalHuffmanTables { get; set; } = [];
 
         public int RestartInterval { get; set; }
     }
@@ -31,7 +30,7 @@ public static class JpegExtensions
 
         var accumulator = new Accumulator();
 
-        while (stream.CanRead)
+        while (stream.Position < stream.Length)
         {
             var marker = stream.ReadByte();
 
@@ -62,7 +61,7 @@ public static class JpegExtensions
                             image = new ImageOtp<T>(accumulator.FrameInfo.Width, accumulator.FrameInfo.Height);
                             break;
                         case JpegMarkers.DHT:
-                            ProcessDHT(stream, stream.Position + length, accumulator.HuffmanTables);
+                            ProcessDHT(stream, stream.Position + length, accumulator.CanonicalHuffmanTables);
                             break;
                         case JpegMarkers.SOS:
                             accumulator.ScanInfo = ProcessSOS(stream, stream.Position + length, accumulator, image.Pixels);
@@ -78,7 +77,7 @@ public static class JpegExtensions
         return image;
     }
 
-    private static void ProcessDQT(Stream stream, long endPosition, Dictionary<byte, double[]> qTables)
+    public static void ProcessDQT(Stream stream, long endPosition, Dictionary<byte, double[]> qTables)
     {
         while (stream.Position < endPosition)
         {
@@ -99,10 +98,6 @@ public static class JpegExtensions
             {
                 if (stream.Position + SIZE > endPosition)
                     throw new InvalidDataException("Truncated DQT segment for 8-bit table.");
-
-                //Span<byte> buffer = stackalloc byte[SIZE * 2];
-                //var bytesRead = stream.Read(buffer);
-                //MemoryMarshal.Cast<byte, ushort>(buffer).CopyTo(raw);
 
                 for (int i = 0; i < SIZE; i++)
                     raw[i] = stream.ReadByte();
@@ -176,10 +171,14 @@ public static class JpegExtensions
         };
     }
 
-    private static void ProcessDHT(Stream stream, long endPosition, List<HuffmanTable> tables)
+    private static void ProcessDHT(Stream stream, long endPosition, Dictionary<(byte Class, byte Id), CanonicalHuffmanTable> tables)
     {
         if (stream.Position > endPosition)
             throw new InvalidDataException("Stream position exceeds segment boundary.");
+
+        const int CODE_LENGTH = 16;
+
+        Span<byte> lengths = stackalloc byte[CODE_LENGTH];
 
         while (stream.Position < endPosition)
         {
@@ -190,24 +189,17 @@ public static class JpegExtensions
             var tc = (byte)((tcTh >> 4) & 0x0F);
             var th = (byte)(tcTh & 0x0F);
 
-            const int CODE_LENGTH = 16;
-            var lengths = new byte[CODE_LENGTH];
-            stream.ReadExactly(lengths, 0, CODE_LENGTH);
+            stream.ReadExactly(lengths);
 
             int symbolCount = 0;
             for (int i = 0; i < CODE_LENGTH; i++)
                 symbolCount += lengths[i];
 
-            var symbols = new byte[symbolCount];
-            stream.ReadExactly(symbols, 0, symbolCount);
+            Span<byte> symbols = stackalloc byte[symbolCount];
+            stream.ReadExactly(symbols);
 
-            tables.Add(new HuffmanTable
-            {
-                Class = tc,
-                Id = th,
-                CodeLengths = lengths,
-                Symbols = symbols
-            });
+            var table = HuffmanTableLogic.BuildCanonical(lengths, symbols);
+            tables[(tc, th)] = table;
         }
     }
 
@@ -253,13 +245,6 @@ public static class JpegExtensions
         byte ah = (byte)(ahAl >> 4);
         byte al = (byte)(ahAl & 0x0F);
 
-        var huff = new Dictionary<(byte Class, byte Id), CanonicalHuffmanTable>(accumulator.HuffmanTables.Count);
-        foreach (var ht in accumulator.HuffmanTables)
-        {
-            var table = HuffmanTableLogic.BuildCanonical(ht.CodeLengths, ht.Symbols);
-            huff[(ht.Class, ht.Id)] = table;
-        }
-
         accumulator.ScanInfo = new SOSSegment
         {
             Components = components,
@@ -269,14 +254,13 @@ public static class JpegExtensions
             Al = al
         };
 
-        DecodeScanToBlocks(stream, huff, accumulator, output);
+        DecodeScanToBlocks(stream, accumulator, output);
 
         return accumulator.ScanInfo;
     }
 
     private static void DecodeScanToBlocks<T>(
         Stream stream,
-        Dictionary<(byte Class, byte Id), CanonicalHuffmanTable> huff,
         Accumulator acc,
         Span<T> output) where T : unmanaged, IPixel<T>
     {
@@ -316,6 +300,8 @@ public static class JpegExtensions
 
         int width = frameInfo.Width;
         int height = frameInfo.Height;
+
+        var huff = acc.CanonicalHuffmanTables;
 
         for (int my = 0; my < mcuRows; my++)
         {

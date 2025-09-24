@@ -7,7 +7,8 @@ public sealed class CanonicalHuffmanTable
     public CanonicalHuffmanTable()
     {
         _byLength = new Dictionary<int, byte>[17];
-        for (int i = 0; i <= 16; i++) _byLength[i] = new Dictionary<int, byte>();
+        for (int i = 0; i <= 16; i++) 
+            _byLength[i] = [];
     }
 
     public void Add(int code, int length, byte symbol)
@@ -26,109 +27,25 @@ public sealed class CanonicalHuffmanTable
 
 public sealed class HuffmanTableLogic
 {
-    //    public static CanonicalHuffmanTable BuildCanonical(byte[] bits, byte[] symbols)
-    //    {
-    //        if (bits == null) throw new ArgumentNullException(nameof(bits));
-    //        if (symbols == null) throw new ArgumentNullException(nameof(symbols));
-    //        if (bits.Length != 16) throw new ArgumentException("bits must have exactly 16 entries.", nameof(bits));
-
-    //        var table = new CanonicalHuffmanTable();
-    //        int symbolIndex = 0;
-
-    //        // Calculate starting codes for each length
-    //        uint[] codes = new uint[17]; // codes[0] unused, codes[1] = first code for length 1, etc.
-    //        codes[1] = 0;
-
-    //        for (int i = 2; i <= 16; i++)
-    //        {
-    //            codes[i] = (uint)((codes[i - 1] + bits[i - 2]) << 1);
-    //        }
-
-    //        // Assign codes to symbols
-    //        for (int bitLength = 1; bitLength <= 16; bitLength++)
-    //        {
-    //            for (int i = 0; i < bits[bitLength - 1]; i++)
-    //            {
-    //                if (symbolIndex >= symbols.Length)
-    //                    throw new ArgumentException("symbols array ended prematurely.", nameof(symbols));
-
-    //                var symbol = symbols[symbolIndex++];
-    //                table.Add((int)codes[bitLength], bitLength, symbol);
-
-    //                //Console.WriteLine($"id = {table.Id} sym={symbol} code={Convert.ToString(codes[bitLength], 2).PadLeft(bitLength, '0')} len={bitLength}");
-
-    //                codes[bitLength]++;
-    //            }
-    //        }
-
-    //        return table;
-    //    }
-
-    //public static CanonicalHuffmanTable BuildCanonical(byte[] lengths, byte[] symbols)
-    //{
-    //    if (lengths == null) throw new ArgumentNullException(nameof(lengths));
-    //    if (symbols == null) throw new ArgumentNullException(nameof(symbols));
-    //    if (lengths.Length < 16) throw new ArgumentException("lengths must have at least 16 entries (for lengths 1..16).", nameof(lengths));
-
-    //    var table = new CanonicalHuffmanTable();
-
-    //    // JPEG lengths array: counts for lengths 1..16 stored in lengths[0..15]
-    //    // Validate total symbols count does not exceed provided symbols array
-    //    int total = 0;
-    //    for (int i = 0; i < 16; i++)
-    //    {
-    //        total += lengths[i];
-    //    }
-    //    if (total > symbols.Length) throw new ArgumentException("symbols array too short for lengths counts.", nameof(symbols));
-
-    //    int symbolIndex = 0;
-    //    int code = 0;
-
-    //    // For each bit length from 1 to 16
-    //    for (int bitLength = 1; bitLength <= 16; bitLength++)
-    //    {
-    //        int count = lengths[bitLength - 1];
-    //        if (count == 0)
-    //        {
-    //            // Shift code for next length (equivalent to left shift by 1)
-    //            code <<= 1;
-    //            continue;
-    //        }
-
-    //        // When increasing length, the canonical code is left-shifted by 1 from previous length.
-    //        code <<= 1;
-
-    //        for (int i = 0; i < count; i++)
-    //        {
-    //            if (symbolIndex >= symbols.Length) throw new ArgumentException("symbols array ended prematurely.", nameof(symbols));
-
-    //            // In JPEG, codes are assigned in increasing order. The code variable here is the next code for this length.
-    //            // However the representation used for lookup in many decoders uses the MSB-first bit ordering.
-    //            // We will store the code value as-is (the canonical integer code).
-    //            table.Add(code, bitLength, symbols[symbolIndex++]);
-
-    //            code++;
-    //        }
-    //    }
-
-    //    return table;
-    //}
-
     public static CanonicalHuffmanTable BuildCanonical(byte[] lengths, byte[] symbols)
     {
         if (lengths == null || lengths.Length != 16)
             throw new ArgumentException("Lengths array must have exactly 16 elements", nameof(lengths));
 
-        symbols ??= Array.Empty<byte>();
+        symbols ??= [];
 
-        // Calculate total number of codes
-        int totalCodes = 0;
+        return BuildCanonical(lengths.AsSpan(), symbols.AsSpan());
+    }
+
+    public static CanonicalHuffmanTable BuildCanonical(Span<byte> lengths, Span<byte> symbols)
+    {
+        if (lengths.Length != 16)
+            throw new ArgumentException("Lengths array must have exactly 16 elements", nameof(lengths));
+
+        var totalCodes = 0;
         for (int i = 0; i < 16; i++)
-        {
             totalCodes += lengths[i];
-        }
 
-        // Validate symbols array has enough elements
         if (symbols.Length < totalCodes)
             throw new ArgumentException("Symbols array doesn't contain enough elements", nameof(symbols));
 
@@ -151,7 +68,6 @@ public sealed class HuffmanTableLogic
                 code++;
             }
 
-            // Only shift if we're not at the last iteration
             if (bits < 16)
                 code <<= 1;
         }

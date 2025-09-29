@@ -1,5 +1,4 @@
-﻿using System;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Image.Otp;
@@ -18,7 +17,7 @@ public readonly unsafe struct Image<T>(int width, int height) : IDisposable wher
     public void Dispose() { }
 }
 
-public unsafe struct ImageOtp<T> : IDisposable where T : unmanaged
+public unsafe ref struct ImageOtp<T> : IDisposable where T : unmanaged
 {
     private readonly T* _buffer;
     private readonly int _length;

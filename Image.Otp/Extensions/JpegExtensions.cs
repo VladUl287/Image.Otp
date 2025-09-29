@@ -64,7 +64,7 @@ public static class JpegExtensions
                             ProcessDHT(stream, stream.Position + length, accumulator.CanonicalHuffmanTables);
                             break;
                         case JpegMarkers.SOS:
-                            accumulator.ScanInfo = ProcessSOS(stream, stream.Position + length, accumulator, image.Pixels);
+                            ProcessSOS(stream, stream.Position + length, accumulator, image.Pixels);
                             break;
                         default:
                             stream.Seek(length, SeekOrigin.Current);
@@ -203,7 +203,7 @@ public static class JpegExtensions
         }
     }
 
-    private static SOSSegment ProcessSOS<T>(Stream stream, long endPosition, Accumulator accumulator, Span<T> output) where T : unmanaged, IPixel<T>
+    private static void ProcessSOS<T>(Stream stream, long endPosition, Accumulator accumulator, Span<T> output) where T : unmanaged, IPixel<T>
     {
         const int MIN_LENGTH = 6;
         const int NUM_COMPONENTS = 1; //1 byte (numComponents)
@@ -255,8 +255,6 @@ public static class JpegExtensions
         };
 
         DecodeScanToBlocks(stream, accumulator, output);
-
-        return accumulator.ScanInfo;
     }
 
     private static void DecodeScanToBlocks<T>(
@@ -357,8 +355,8 @@ public static class JpegExtensions
         }
 
         byte[] yBuffer = componentBuffers[1];
-        byte[] cbBuffer = componentBuffers.ContainsKey(2) ? componentBuffers[2] : null;
-        byte[] crBuffer = componentBuffers.ContainsKey(3) ? componentBuffers[3] : null;
+        componentBuffers.TryGetValue(2, out var cbBuffer);
+        componentBuffers.TryGetValue(3, out var crBuffer);
 
         if (typeof(T) == typeof(Rgba32))
         {

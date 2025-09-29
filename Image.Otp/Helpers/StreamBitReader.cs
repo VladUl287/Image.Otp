@@ -6,8 +6,6 @@ public class StreamBitReader(Stream stream)
 {
     public int BitBuffer { get; private set; } = 0;
     public int BitCount { get; private set; } = 0;
-    public long Position => stream.Position;
-    public bool CanSeek => stream.CanSeek;
 
     private int ReadByte()
     {
@@ -117,11 +115,10 @@ public class StreamBitReader(Stream stream)
         return ReadByte();
     }
 
-    private static int BitsToNumber(Span<int> bits) => BitsToNumber(bits, bits.Length);
-    private static int BitsToNumber(Span<int> bits, int length)
+    private static int BitsToNumber(Span<int> bits)
     {
         var res = 0;
-        for (int i = 0; i < length; i++)
+        for (int i = 0; i < bits.Length; i++)
         {
             res = (res << 1) | bits[i];
         }

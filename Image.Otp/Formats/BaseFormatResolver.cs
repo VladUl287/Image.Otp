@@ -1,14 +1,14 @@
 ﻿using Image.Otp.Abstractions;
-using System.Runtime.CompilerServices;
+using Image.Otp.Core.Extensions;
 
 namespace Image.Otp.Core.Formats;
 
 public class BaseFormatResolver : IFormatResolver
 {
-    public ImgFormat Resolve(string path) => ResolveFormat(path);
-    public ImgFormat Resolve(Stream stream) => ResolveFormat(stream);
+    public ImgFormat Resolve(string path) => ResolveByPath(path);
+    public ImgFormat Resolve(Stream stream) => ResolveByStream(stream);
 
-    public static ImgFormat ResolveFormat(Stream data)
+    public static ImgFormat ResolveByStream(Stream data)
     {
         const int MaxHeaderSize = 16;
 
@@ -18,36 +18,39 @@ public class BaseFormatResolver : IFormatResolver
         data.ReadExactly(header);
         data.Position = originalPosition;
 
-        return ResolveFormat(header);
+        return ResolveByHeader(header);
     }
 
-    public static ImgFormat ResolveFormat(ReadOnlySpan<byte> header)
+    public static ImgFormat ResolveByHeader(ReadOnlySpan<byte> header)
     {
-        if (IsBmp(header))
+        if (header.IsBmp())
             return ImgFormat.Bmp;
 
-        if (IsJpeg(header))
+        if (header.IsJpeg())
             return ImgFormat.Jpeg;
 
-        if (IsPng(header))
+        if (header.IsPng())
             return ImgFormat.Png;
 
         throw new NotSupportedException();
     }
 
-    public static ImgFormat ResolveFormat(string fileName)
+    public static ImgFormat ResolveByPath(string path)
     {
-        ArgumentException.ThrowIfNullOrEmpty(fileName, nameof(fileName));
-        return Resolve(fileName.AsSpan());
+        ArgumentException.ThrowIfNullOrEmpty(path, nameof(path));
+        var extension = Path.GetExtension(path.AsSpan());
+        return ResolveByExtension(extension);
     }
 
-    public static ImgFormat Resolve(ReadOnlySpan<char> fileName)
+    public static ImgFormat ResolveByExtension(ReadOnlySpan<char> extension)
     {
-        var extension = Path.GetExtension(fileName);
-        Span<char> lower = stackalloc char[extension.Length];
-        fileName.ToLowerInvariant(lower);
+        if (extension.IsEmpty)
+            throw new NotSupportedException("File has no extension");
 
-        return lower switch
+        Span<char> lowerExtension = stackalloc char[extension.Length];
+        extension.ToLowerInvariant(lowerExtension);
+
+        return lowerExtension switch
         {
             ".bmp" => ImgFormat.Bmp,
             ".jpg" or ".jpeg" or ".jfif" or ".jpe" or ".jfi" => ImgFormat.Jpeg,
@@ -56,16 +59,4 @@ public class BaseFormatResolver : IFormatResolver
             _ => throw new NotSupportedException($"Unsupported image extension: {extension}")
         };
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsBmp(ReadOnlySpan<byte> header) => header.Length >= 2 && header[0] == 0x42 && header[1] == 0x4D;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsJpeg(ReadOnlySpan<byte> header) => header.Length >= 2 && header[0] == 0xFF && header[1] == 0xD8;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsPng(ReadOnlySpan<byte> header) =>
-        header.Length >= 8 && header[0] == 0x89 && header[1] == 0x50 &&
-        header[2] == 0x4E && header[3] == 0x47 && header[4] == 0x0D &&
-        header[5] == 0x0A && header[6] == 0x1A && header[7] == 0x0A;
 }

@@ -23,7 +23,7 @@ public static class JpegExtensions
         public int RestartInterval { get; set; }
     }
 
-    public unsafe static Image<T> LoadJpeg<T>(this Stream stream) where T : unmanaged, IPixel<T>
+    public unsafe static Image<T> LoadBaselineJpeg<T>(this Stream stream) where T : unmanaged, IPixel<T>
     {
         Image<T> image = default;
 
@@ -38,9 +38,7 @@ public static class JpegExtensions
                 marker = stream.ReadByte();
 
                 if (marker == JpegMarkers.EOI)
-                {
                     break;
-                }
 
                 if (JpegMarkers.HasLengthData(marker))
                 {
@@ -58,6 +56,9 @@ public static class JpegExtensions
                         case JpegMarkers.SOF2:
                             accumulator.FrameInfo = ProcessSOF(stream, stream.Position + length);
                             image = new Image<T>(accumulator.FrameInfo.Width, accumulator.FrameInfo.Height);
+                            break;
+                        case JpegMarkers.DRI:
+                            accumulator.RestartInterval = stream.ReadBigEndianUInt16();
                             break;
                         case JpegMarkers.DHT:
                             ProcessDHT(stream, stream.Position + length, accumulator.CanonicalHuffmanTables);

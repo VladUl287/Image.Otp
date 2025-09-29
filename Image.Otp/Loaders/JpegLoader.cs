@@ -3,7 +3,7 @@ using Image.Otp.Core.Extensions;
 
 namespace Image.Otp.Core.Loaders;
 
-public sealed class JpgLoader : IImageLoader
+public sealed class JpegLoader : IImageLoader
 {
     public bool CanLoad(ImgFormat format) => format == ImgFormat.Jpeg;
 
@@ -19,5 +19,5 @@ public sealed class JpgLoader : IImageLoader
         return Load<T>(stream);
     }
 
-    public Image<T> Load<T>(Stream stream) where T : unmanaged, IPixel<T> => stream.LoadJpeg<T>();
+    public Image<T> Load<T>(Stream stream) where T : unmanaged, IPixel<T> => stream.LoadBaselineJpeg<T>();
 }

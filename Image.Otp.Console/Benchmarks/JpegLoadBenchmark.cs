@@ -1,6 +1,5 @@
 ﻿using BenchmarkDotNet.Attributes;
-using Image.Otp.Primitives;
-using BenchmarkDotNet.Jobs;
+using Image.Otp.Core.Primitives;
 
 namespace Image.Otp.Console.Benchmarks;
 

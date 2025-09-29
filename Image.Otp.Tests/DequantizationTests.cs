@@ -1,4 +1,4 @@
-﻿using Image.Otp.Helpers.Jpg;
+﻿using Image.Otp.Core.Helpers.Jpg;
 
 namespace Image.Otp.Tests;
 

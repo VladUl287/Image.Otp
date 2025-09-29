@@ -1,7 +1,7 @@
-﻿using Image.Otp.Primitives;
+﻿using Image.Otp.Core.Primitives;
 using System.Collections.Frozen;
 
-namespace Image.Otp.Pixels;
+namespace Image.Otp.Core.Pixels;
 
 public static class PixelProcessorFactory
 {

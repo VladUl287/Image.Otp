@@ -1,4 +1,4 @@
-﻿namespace Image.Otp.Enums;
+﻿namespace Image.Otp.Core.Enums;
 
 public enum JpegMarker : byte
 {

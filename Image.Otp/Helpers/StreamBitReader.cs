@@ -1,6 +1,6 @@
 ﻿using System.Buffers;
 
-namespace Image.Otp.Helpers;
+namespace Image.Otp.Core.Helpers;
 
 public class StreamBitReader(Stream stream)
 {

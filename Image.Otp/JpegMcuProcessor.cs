@@ -1,4 +1,4 @@
-﻿using Image.Otp.Models.Jpeg;
+﻿using Image.Otp.Core.Models.Jpeg;
 using System.Buffers;
 
 namespace Image.Otp;

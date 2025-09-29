@@ -1,4 +1,4 @@
-﻿namespace Image.Otp.Models.Jpeg;
+﻿namespace Image.Otp.Core.Models.Jpeg;
 
 public sealed class ScanComponent
 {

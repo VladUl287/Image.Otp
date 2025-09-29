@@ -1,8 +1,8 @@
-﻿using Image.Otp.Primitives;
+﻿using Image.Otp.Core.Primitives;
 using System.Runtime.Intrinsics.X86;
 using System.Runtime.Intrinsics;
 
-namespace Image.Otp.Extensions;
+namespace Image.Otp.Core.Extensions;
 
 public static class ResizeExtensions
 {

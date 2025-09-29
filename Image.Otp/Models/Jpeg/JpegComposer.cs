@@ -1,4 +1,4 @@
-﻿using Image.Otp.Primitives;
+﻿using Image.Otp.Core.Primitives;
 using System.Runtime.CompilerServices;
 
 public static class JpegComposer

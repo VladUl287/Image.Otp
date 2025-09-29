@@ -1,6 +1,6 @@
-﻿using Image.Otp.Pixels;
+﻿using Image.Otp.Core.Pixels;
 
-namespace Image.Otp.Contracts;
+namespace Image.Otp.Core.Contracts;
 
 public interface IImageProcessor<T> where T : unmanaged, IPixel<T>
 {

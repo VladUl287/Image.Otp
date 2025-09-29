@@ -1,5 +1,5 @@
-﻿using Image.Otp.Helpers;
-using Image.Otp.Models.Jpeg;
+﻿using Image.Otp.Core.Helpers;
+using Image.Otp.Core.Models.Jpeg;
 
 namespace Image.Otp;
 

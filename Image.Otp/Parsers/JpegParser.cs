@@ -1,6 +1,6 @@
-﻿using Image.Otp.Models.Jpeg;
+﻿using Image.Otp.Core.Models.Jpeg;
 
-namespace Image.Otp.Parsers;
+namespace Image.Otp.Core.Parsers;
 
 public sealed class JpegParser
 {

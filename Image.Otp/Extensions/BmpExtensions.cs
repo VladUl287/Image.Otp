@@ -1,4 +1,4 @@
-﻿using Image.Otp.Primitives;
+﻿using Image.Otp.Core.Primitives;
 
 namespace Image.Otp.Core.Extensions;
 

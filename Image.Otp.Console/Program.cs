@@ -1,5 +1,5 @@
-﻿using Image.Otp.Extensions;
-using Image.Otp.Primitives;
+﻿using Image.Otp.Core.Extensions;
+using Image.Otp.Core.Primitives;
 
 //BenchmarkRunner.Run<JpegLoadBenchmark>();
 //return;

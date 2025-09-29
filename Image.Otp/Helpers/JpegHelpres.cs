@@ -1,7 +1,7 @@
-﻿using Image.Otp.Models.Jpeg;
+﻿using Image.Otp.Core.Models.Jpeg;
 using System.Buffers;
 
-namespace Image.Otp.Helpers;
+namespace Image.Otp.Core.Helpers;
 
 public static class JpegHelpres
 {

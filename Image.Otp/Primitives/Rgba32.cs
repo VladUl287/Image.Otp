@@ -1,8 +1,8 @@
-﻿using Image.Otp.Pixels;
+﻿using Image.Otp.Core.Pixels;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
-namespace Image.Otp.Primitives;
+namespace Image.Otp.Core.Primitives;
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public readonly struct Rgba32(byte r, byte g, byte b, byte a = 255) : IPixel<Rgba32>

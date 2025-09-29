@@ -1,6 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 
-namespace Image.Otp.Helpers.Jpg;
+namespace Image.Otp.Core.Helpers.Jpg;
 
 public static class InverseDCT
 {

@@ -1,4 +1,4 @@
-﻿namespace Image.Otp.Extensions;
+﻿namespace Image.Otp.Core.Extensions;
 
 public static class StreamExtensions
 {

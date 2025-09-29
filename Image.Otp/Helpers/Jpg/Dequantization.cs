@@ -1,6 +1,6 @@
 ﻿using System.Numerics;
 
-namespace Image.Otp.Helpers.Jpg;
+namespace Image.Otp.Core.Helpers.Jpg;
 
 public static class Dequantization
 {

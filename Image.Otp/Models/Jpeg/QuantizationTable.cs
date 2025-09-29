@@ -1,6 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 
-namespace Image.Otp.Models.Jpeg;
+namespace Image.Otp.Core.Models.Jpeg;
 
 public sealed class QuantizationTable
 {

@@ -1,4 +1,4 @@
-﻿namespace Image.Otp.Helpers;
+﻿namespace Image.Otp.Core.Helpers;
 
 public sealed class CustomBitReader(byte[] data)
 {

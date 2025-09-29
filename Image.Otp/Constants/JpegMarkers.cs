@@ -1,7 +1,7 @@
 ﻿using System.Runtime.Intrinsics.X86;
 using System.Runtime.Intrinsics;
 
-namespace Image.Otp.Constants;
+namespace Image.Otp.Core.Constants;
 
 public static class JpegMarkers
 {

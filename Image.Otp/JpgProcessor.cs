@@ -1,6 +1,6 @@
-﻿using Image.Otp.Contracts;
-using Image.Otp.Extensions;
-using Image.Otp.Pixels;
+﻿using Image.Otp.Core.Contracts;
+using Image.Otp.Core.Extensions;
+using Image.Otp.Core.Pixels;
 
 namespace Image.Otp;
 

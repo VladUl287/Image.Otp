@@ -2,7 +2,7 @@
 using System.Runtime.Intrinsics.X86;
 using System.Runtime.Intrinsics;
 
-namespace Image.Otp.Helpers.Jpg;
+namespace Image.Otp.Core.Helpers.Jpg;
 
 public static class Upsampling
 {

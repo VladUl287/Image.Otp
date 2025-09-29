@@ -1,7 +1,7 @@
-﻿using Image.Otp.Models.Jpeg;
-using Image.Otp.Parsers;
+﻿using Image.Otp.Core.Models.Jpeg;
+using Image.Otp.Core.Parsers;
 using System.Runtime.InteropServices;
-using Image.Otp.Pixels;
+using Image.Otp.Core.Pixels;
 using Image.Otp.Core.Formats;
 
 namespace Image.Otp.Core.Extensions;

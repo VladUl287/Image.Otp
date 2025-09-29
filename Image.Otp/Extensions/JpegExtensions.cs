@@ -1,8 +1,8 @@
-﻿using Image.Otp.Constants;
-using Image.Otp.Helpers;
-using Image.Otp.Models.Jpeg;
-using Image.Otp.Pixels;
-using Image.Otp.Helpers.Jpg;
+﻿using Image.Otp.Core.Constants;
+using Image.Otp.Core.Helpers;
+using Image.Otp.Core.Models.Jpeg;
+using Image.Otp.Core.Pixels;
+using Image.Otp.Core.Helpers.Jpg;
 using System.Buffers;
 
 namespace Image.Otp.Core.Extensions;

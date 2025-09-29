@@ -1,6 +1,6 @@
-﻿using Image.Otp.Primitives;
+﻿using Image.Otp.Core.Primitives;
 
-namespace Image.Otp.Pixels;
+namespace Image.Otp.Core.Pixels;
 
 public interface IPixel<T> : IEquatable<T>
 { }

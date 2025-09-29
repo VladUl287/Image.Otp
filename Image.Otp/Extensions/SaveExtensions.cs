@@ -1,6 +1,6 @@
-﻿using Image.Otp.Primitives;
+﻿using Image.Otp.Core.Primitives;
 
-namespace Image.Otp.Extensions;
+namespace Image.Otp.Core.Extensions;
 
 public static class SaveExtensions
 {

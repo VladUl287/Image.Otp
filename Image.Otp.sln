@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.13.35919.96
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Image.Otp", "Image.Otp\Image.Otp.csproj", "{10F8B5B2-38EE-B44E-1587-B81B45EA1209}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Image.Otp.Core", "Image.Otp\Image.Otp.Core.csproj", "{10F8B5B2-38EE-B44E-1587-B81B45EA1209}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Image.Otp.Console", "Image.Otp.Console\Image.Otp.Console.csproj", "{8F7F81EF-AC42-79D9-605F-71861B9BACCD}"
 EndProject

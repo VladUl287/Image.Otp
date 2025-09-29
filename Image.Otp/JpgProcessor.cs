@@ -6,17 +6,17 @@ namespace Image.Otp;
 
 public sealed class JpgProcessor<T> : IImageProcessor<T> where T : unmanaged, IPixel<T>
 {
-    public ImageOtp<T> Process(Stream stream)
+    public Image<T> Process(Stream stream)
     {
         throw new NotImplementedException();
     }
 
-    public ImageOtp<T> Process(byte[] data)
+    public Image<T> Process(byte[] data)
     {
         throw new NotImplementedException();
     }
 
-    public ImageOtp<T> Process(string path)
+    public Image<T> Process(string path)
     {
         using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.SequentialScan);
         return fileStream.LoadJpeg<T>();

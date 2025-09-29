@@ -24,9 +24,9 @@ public static class JpegExtensions
         public int RestartInterval { get; set; }
     }
 
-    public unsafe static ImageOtp<T> LoadJpeg<T>(this Stream stream) where T : unmanaged, IPixel<T>
+    public unsafe static Image<T> LoadJpeg<T>(this Stream stream) where T : unmanaged, IPixel<T>
     {
-        ImageOtp<T> image = default;
+        Image<T> image = default;
 
         var accumulator = new Accumulator();
 
@@ -58,7 +58,7 @@ public static class JpegExtensions
                         case JpegMarkers.SOF0:
                         case JpegMarkers.SOF2:
                             accumulator.FrameInfo = ProcessSOF(stream, stream.Position + length);
-                            image = new ImageOtp<T>(accumulator.FrameInfo.Width, accumulator.FrameInfo.Height);
+                            image = new Image<T>(accumulator.FrameInfo.Width, accumulator.FrameInfo.Height);
                             break;
                         case JpegMarkers.DHT:
                             ProcessDHT(stream, stream.Position + length, accumulator.CanonicalHuffmanTables);

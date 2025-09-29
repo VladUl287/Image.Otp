@@ -4,7 +4,7 @@ namespace Image.Otp.Extensions;
 
 public static class SaveExtensions
 {
-    public static unsafe void SaveAsBmp(this ImageOtp<Rgba32> image, string path)
+    public static unsafe void SaveAsBmp(this Image<Rgba32> image, string path)
     {
         int rowSize = image.Width * 4;
         int padding = (4 - (rowSize % 4)) % 4;
@@ -47,7 +47,7 @@ public static class SaveExtensions
         }
     }
 
-    public static unsafe void SaveAsBmp(this ImageOtp<Rgb24> image, string path)
+    public static unsafe void SaveAsBmp(this Image<Rgb24> image, string path)
     {
         int rowSize = image.Width * 3;
         int padding = (4 - (rowSize % 4)) % 4;

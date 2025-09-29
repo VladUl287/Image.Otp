@@ -3,21 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace Image.Otp;
 
-public readonly unsafe struct Image<T>(int width, int height) : IDisposable where T : unmanaged
-{
-    private readonly T[] _buffer = new T[width * height];
-
-    public readonly int Width => width;
-    public readonly int Height => height;
-
-    public readonly Span<T> Pixels => _buffer.AsSpan(0, _buffer.Length);
-
-    public ref T GetPixel(int x, int y) => ref _buffer[y * Width + x];
-
-    public void Dispose() { }
-}
-
-public unsafe ref struct ImageOtp<T> : IDisposable where T : unmanaged
+public unsafe ref struct Image<T> : IDisposable where T : unmanaged
 {
     private readonly T* _buffer;
     private readonly int _length;
@@ -32,12 +18,12 @@ public unsafe ref struct ImageOtp<T> : IDisposable where T : unmanaged
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            if (_disposed) throw new ObjectDisposedException(nameof(ImageOtp<T>));
+            if (_disposed) throw new ObjectDisposedException(nameof(Image<T>));
             return new Span<T>(_buffer, _length);
         }
     }
 
-    public ImageOtp(int width, int height, nuint alignment = 16)
+    public Image(int width, int height, nuint alignment = 16)
     {
         Width = width;
         Height = height;
@@ -49,7 +35,7 @@ public unsafe ref struct ImageOtp<T> : IDisposable where T : unmanaged
     public readonly ref T GetPixel(int x, int y)
     {
         if (_disposed)
-            throw new ObjectDisposedException(nameof(ImageOtp<T>));
+            throw new ObjectDisposedException(nameof(Image<T>));
 
         var index = y * Width + x;
         if (index < 0 || index >= _length)

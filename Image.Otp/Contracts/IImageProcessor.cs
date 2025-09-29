@@ -4,7 +4,7 @@ namespace Image.Otp.Contracts;
 
 public interface IImageProcessor<T> where T : unmanaged, IPixel<T>
 {
-    ImageOtp<T> Process(Stream stream);
-    ImageOtp<T> Process(byte[] data);
-    ImageOtp<T> Process(string path);
+    Image<T> Process(Stream stream);
+    Image<T> Process(byte[] data);
+    Image<T> Process(string path);
 }

@@ -1,4 +1,5 @@
-﻿using Image.Otp.Core.Primitives;
+﻿using Image.Otp.Abstractions;
+using Image.Otp.Core.Primitives;
 
 namespace Image.Otp.Core.Extensions;
 

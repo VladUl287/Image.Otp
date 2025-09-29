@@ -2,31 +2,12 @@
 using Image.Otp.Core.Parsers;
 using System.Runtime.InteropServices;
 using Image.Otp.Core.Pixels;
-using Image.Otp.Core.Formats;
+using Image.Otp.Abstractions;
 
 namespace Image.Otp.Core.Extensions;
 
 public static class ImageExtensions
 {
-    public static Image<T> Load<T>(string path) where T : unmanaged, IPixel<T>
-    {
-        using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.SequentialScan);
-        return Load<T>(fileStream);
-    }
-
-    public static Image<T> Load<T>(Stream stream) where T : unmanaged, IPixel<T>
-    {
-        var format = FormatResolver.Resolve(stream);
-
-        return format switch
-        {
-            ImageFormat.Bmp => stream.LoadBmp<T>(),
-            ImageFormat.Jpeg => stream.LoadJpeg<T>(),
-            //ImageFormat.Png => stream.LoadBmp<T>(),
-            _ => throw new NotSupportedException()
-        };
-    }
-
     private unsafe static Image<T> LoadJpeg<T>(byte[] bytes) where T : unmanaged, IPixel<T>
     {
         List<JpegSegment> segments = JpegParser.ParseSegmentsWithRestartMarkers(bytes);

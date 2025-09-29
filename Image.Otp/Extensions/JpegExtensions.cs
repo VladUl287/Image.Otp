@@ -4,6 +4,7 @@ using Image.Otp.Core.Models.Jpeg;
 using Image.Otp.Core.Pixels;
 using Image.Otp.Core.Helpers.Jpg;
 using System.Buffers;
+using Image.Otp.Abstractions;
 
 namespace Image.Otp.Core.Extensions;
 

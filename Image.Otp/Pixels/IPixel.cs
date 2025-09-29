@@ -1,16 +1,7 @@
-﻿using Image.Otp.Core.Primitives;
+﻿using Image.Otp.Abstractions;
+using Image.Otp.Core.Primitives;
 
 namespace Image.Otp.Core.Pixels;
-
-public interface IPixel<T> : IEquatable<T>
-{ }
-
-public unsafe interface IPixelProcessor<T> where T : unmanaged, IPixel<T>
-{
-    void ProcessPixel(byte* srcPtr, int srcPos, T* dstPtr, int dstPos, int bytesPerPixel);
-
-    T FromYCbCr(byte y, byte cb, byte cr);
-}
 
 public unsafe class Rgba32Processor : IPixelProcessor<Rgba32>
 {

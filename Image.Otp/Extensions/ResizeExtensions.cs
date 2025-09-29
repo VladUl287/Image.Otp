@@ -1,12 +1,13 @@
 ﻿using Image.Otp.Core.Primitives;
 using System.Runtime.Intrinsics.X86;
 using System.Runtime.Intrinsics;
+using Image.Otp.Abstractions;
 
 namespace Image.Otp.Core.Extensions;
 
 public static class ResizeExtensions
 {
-    public static Image<T> ResizeNearestNeighbor<T>(this Image<T> source, int newWidth, int newHeight) where T : unmanaged
+    public static Image<T> ResizeNearestNeighbor<T>(this Image<T> source, int newWidth, int newHeight) where T : unmanaged, IPixel<T>
     {
         var dest = new Image<T>(newWidth, newHeight);
         float scaleX = (float)source.Width / newWidth;

@@ -1,10 +1,11 @@
-﻿using Image.Otp.Core.Primitives;
+﻿using Image.Otp.Abstractions;
+using Image.Otp.Core.Primitives;
 
 namespace Image.Otp.Core.Extensions;
 
 public static class BmpExtensions
 {
-    public unsafe static Image<T> LoadBmp<T>(this Stream stream) where T : unmanaged
+    public unsafe static Image<T> LoadBmp<T>(this Stream stream) where T : unmanaged, IPixel<T>
     {
         using var br = new BinaryReader(stream);
 

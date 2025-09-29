@@ -1,4 +1,4 @@
-﻿using Image.Otp.Core.Pixels;
+﻿using Image.Otp.Abstractions;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 

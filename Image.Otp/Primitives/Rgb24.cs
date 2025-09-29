@@ -1,11 +1,12 @@
-﻿using Image.Otp.Core.Pixels;
+﻿using Image.Otp.Abstractions;
+using Image.Otp.Core.Pixels;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace Image.Otp.Core.Primitives;
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
-public readonly struct Rgb24(byte r, byte g, byte b) : IPixel<Rgb24>, IEquatable<Rgb24>
+public readonly struct Rgb24(byte r, byte g, byte b) : IPixel<Rgb24>
 {
     public readonly byte R = r, G = g, B = b;
 

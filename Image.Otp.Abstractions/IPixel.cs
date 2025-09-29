@@ -3,7 +3,9 @@
 public interface IPixel<T> : IEquatable<T>
 { }
 
-public unsafe interface IPixelBuilder<T> where T : unmanaged, IPixel<T>
+public unsafe interface IPixelProcessor<T> where T : unmanaged, IPixel<T>
 {
+    void ProcessPixel(byte* srcPtr, int srcPos, T* dstPtr, int dstPos, int bytesPerPixel);
+
     T FromYCbCr(byte y, byte cb, byte cr);
 }

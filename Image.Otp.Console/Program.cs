@@ -1,14 +1,16 @@
-﻿using Image.Otp.Core.Extensions;
+﻿using Image.Otp.Abstractions;
+using Image.Otp.Core.Extensions;
+using Image.Otp.Core.Formats;
+using Image.Otp.Core.Loaders;
 using Image.Otp.Core.Primitives;
 
-//BenchmarkRunner.Run<JpegLoadBenchmark>();
-//return;
+var formatResovler = new BaseFormatResolver();
+var loaders = new IImageLoader[] { new JpgLoader(), new BmpLoader() };
+var loader = new ImageLoader(formatResovler, loaders);
 
-var image = ImageExtensions.Load<Rgb24>("C:\\Users\\User\\source\\repos\\images\\firstJpg.jpg");
+var filePath = "C:\\Users\\User\\source\\repos\\images\\firstJpg.jpg";
+var outputPath = "C:\\Users\\User\\source\\repos\\images\\firstJpg-output.jpg";
 
-//var processor = new JpgProcessor<Rgb24>();
-//var image = processor.Process("C:\\Users\\User\\source\\repos\\images\\firstJpg.jpg");
-
-image.SaveAsBmp("C:\\Users\\User\\source\\repos\\images\\latest.jpg");
+var image = loader.Load<Rgb24>(filePath);
+image.SaveAsBmp(outputPath);
 image.Dispose();
-

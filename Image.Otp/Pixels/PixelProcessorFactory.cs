@@ -1,4 +1,5 @@
-﻿using Image.Otp.Core.Primitives;
+﻿using Image.Otp.Abstractions;
+using Image.Otp.Core.Primitives;
 using System.Collections.Frozen;
 
 namespace Image.Otp.Core.Pixels;

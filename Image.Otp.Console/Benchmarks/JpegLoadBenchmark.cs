@@ -64,15 +64,4 @@ public class JpegLoadBenchmark
     //    image.Dispose();
     //    return size;
     //}
-
-    private static readonly JpgProcessor<Rgba32> JpegProcessor = new JpgProcessor<Rgba32>();
-
-    [Benchmark]
-    public int LoadJpegLatest()
-    {
-        var image = JpegProcessor.Process(JpegBaseLine);
-        var size = image.Width * image.Height;
-        image.Dispose();
-        return size;
-    }
 }

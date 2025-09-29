@@ -11,4 +11,12 @@
     <PackageReference Include="System.Drawing.Common" Version="9.0.8" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Processors\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Image.Otp.Abstractions\Image.Otp.Abstractions.csproj" />
+  </ItemGroup>
+
 </Project>

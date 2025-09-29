@@ -2,12 +2,10 @@
 using Image.Otp.Helpers;
 using Image.Otp.Models.Jpeg;
 using Image.Otp.Pixels;
-using Image.Otp.Primitives;
-using System.Runtime.InteropServices;
 using Image.Otp.Helpers.Jpg;
 using System.Buffers;
 
-namespace Image.Otp.Extensions;
+namespace Image.Otp.Core.Extensions;
 
 public static class JpegExtensions
 {

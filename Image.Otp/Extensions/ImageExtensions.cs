@@ -2,9 +2,9 @@
 using Image.Otp.Parsers;
 using System.Runtime.InteropServices;
 using Image.Otp.Pixels;
-using System.Runtime.CompilerServices;
+using Image.Otp.Core.Formats;
 
-namespace Image.Otp.Extensions;
+namespace Image.Otp.Core.Extensions;
 
 public static class ImageExtensions
 {
@@ -16,23 +16,16 @@ public static class ImageExtensions
 
     public static Image<T> Load<T>(Stream stream) where T : unmanaged, IPixel<T>
     {
-        Span<byte> bytes = [(byte)stream.ReadByte(), (byte)stream.ReadByte()];
-        stream.Position = 0;
+        var format = FormatResolver.Resolve(stream);
 
-        if (IsBmp(bytes)) 
-            return stream.LoadBmp<T>();
-
-        if (IsJpeg(bytes)) 
-            return stream.LoadJpeg<T>();
-
-        throw new NotSupportedException();
+        return format switch
+        {
+            ImageFormat.Bmp => stream.LoadBmp<T>(),
+            ImageFormat.Jpeg => stream.LoadJpeg<T>(),
+            //ImageFormat.Png => stream.LoadBmp<T>(),
+            _ => throw new NotSupportedException()
+        };
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsBmp(Span<byte> data) => data[0] == 0x42 && data[1] == 0x4D;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsJpeg(Span<byte> data) => data[0] == 0xFF && data[1] == 0xD8;
 
     private unsafe static Image<T> LoadJpeg<T>(byte[] bytes) where T : unmanaged, IPixel<T>
     {

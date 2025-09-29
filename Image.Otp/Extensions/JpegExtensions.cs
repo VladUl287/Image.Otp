@@ -23,7 +23,7 @@ public static class JpegExtensions
         public int RestartInterval { get; set; }
     }
 
-    public unsafe static Image<T> LoadBaselineJpeg<T>(this Stream stream) where T : unmanaged, IPixel<T>
+    public unsafe static Image<T> LoadJpeg<T>(this Stream stream) where T : unmanaged, IPixel<T>
     {
         Image<T> image = default;
 

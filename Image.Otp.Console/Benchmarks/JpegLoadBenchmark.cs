@@ -1,4 +1,6 @@
 ﻿using BenchmarkDotNet.Attributes;
+using Image.Otp.Core.Formats;
+using Image.Otp.Core.Loaders;
 using Image.Otp.Core.Primitives;
 
 namespace Image.Otp.Console.Benchmarks;
@@ -55,13 +57,35 @@ public class JpegLoadBenchmark
     //    return size;
     //}
 
-    //[Benchmark]
-    //public int LoadJpegImageSharpStream()
-    //{
-    //    using var stream = new FileStream(JpegBaseLine, FileMode.Open);
-    //    using var image = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(stream);
-    //    var size = image.Width * image.Height;
-    //    image.Dispose();
-    //    return size;
-    //}
+    [Benchmark]
+    public int LoadJpegImageSharpStream()
+    {
+        using var stream = new FileStream(JpegBaseLine, FileMode.Open);
+        using var image = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(stream);
+        var size = image.Width * image.Height;
+        image.Dispose();
+        return size;
+    }
+
+    private readonly static ImageLoader uniLoader = new(new BaseFormatResolver(), [new JpegLoader()]);
+
+    [Benchmark]
+    public int LoadJpegUniversalLoader()
+    {
+        using var image = uniLoader.Load<Rgba32>(JpegBaseLine);
+        var size = image.Width * image.Height;
+        image.Dispose();
+        return size;
+    }
+
+    private readonly static JpegLoader jpegLoader = new();
+
+    [Benchmark]
+    public int LoadJpegSpecificLoader()
+    {
+        using var image = jpegLoader.Load<Rgba32>(JpegBaseLine);
+        var size = image.Width * image.Height;
+        image.Dispose();
+        return size;
+    }
 }

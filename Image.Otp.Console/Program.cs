@@ -1,8 +1,13 @@
-﻿using Image.Otp.Abstractions;
+﻿using BenchmarkDotNet.Running;
+using Image.Otp.Abstractions;
+using Image.Otp.Console.Benchmarks;
 using Image.Otp.Core.Extensions;
 using Image.Otp.Core.Formats;
 using Image.Otp.Core.Loaders;
 using Image.Otp.Core.Primitives;
+
+BenchmarkRunner.Run<JpegLoadBenchmark>();
+return;
 
 var formatResovler = new BaseFormatResolver();
 var loaders = new IImageLoader[] { new JpegLoader(), new BmpLoader() };

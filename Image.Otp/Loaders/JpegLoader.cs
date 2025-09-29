@@ -19,5 +19,5 @@ public sealed class JpegLoader : IImageLoader
         return Load<T>(stream);
     }
 
-    public Image<T> Load<T>(Stream stream) where T : unmanaged, IPixel<T> => stream.LoadBaselineJpeg<T>();
+    public Image<T> Load<T>(Stream stream) where T : unmanaged, IPixel<T> => stream.LoadJpeg<T>();
 }

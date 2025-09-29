@@ -358,30 +358,15 @@ public static class JpegExtensions
         componentBuffers.TryGetValue(2, out var cbBuffer);
         componentBuffers.TryGetValue(3, out var crBuffer);
 
-        if (typeof(T) == typeof(Rgba32))
+        var processor = PixelProcessorFactory.GetProcessor<T>();
+
+        for (int i = 0; i < width * height; i++)
         {
-            Span<Rgba32> rgbaOutput = MemoryMarshal.Cast<T, Rgba32>(output);
+            byte yVal = yBuffer[i];
+            byte cbVal = cbBuffer != null ? cbBuffer[i] : (byte)128;
+            byte crVal = crBuffer != null ? crBuffer[i] : (byte)128;
 
-            for (int i = 0; i < width * height; i++)
-            {
-                byte yVal = yBuffer[i];
-                byte cbVal = cbBuffer != null ? cbBuffer[i] : (byte)128;
-                byte crVal = crBuffer != null ? crBuffer[i] : (byte)128;
-
-                double Yd = yVal;
-                double Cbd = cbVal - 128.0;
-                double Crd = crVal - 128.0;
-
-                int r = (int)Math.Round(Yd + 1.402 * Crd);
-                int g = (int)Math.Round(Yd - 0.344136 * Cbd - 0.714136 * Crd);
-                int b = (int)Math.Round(Yd + 1.772 * Cbd);
-
-                r = Math.Clamp(r, 0, 255);
-                g = Math.Clamp(g, 0, 255);
-                b = Math.Clamp(b, 0, 255);
-
-                rgbaOutput[i] = new Rgba32((byte)r, (byte)g, (byte)b);
-            }
+            output[i] = processor.FromYCbCr(yVal, cbVal, crVal);
         }
 
         ArrayPool<byte>.Shared.Return(yBuffer, true);

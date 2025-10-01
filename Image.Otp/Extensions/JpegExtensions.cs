@@ -5,6 +5,7 @@ using Image.Otp.Core.Pixels;
 using Image.Otp.Core.Helpers.Jpg;
 using System.Buffers;
 using Image.Otp.Abstractions;
+using System.Runtime.CompilerServices;
 
 namespace Image.Otp.Core.Extensions;
 
@@ -50,7 +51,7 @@ public static class JpegExtensions
                     switch (marker)
                     {
                         case JpegMarkers.DQT:
-                            ProcessDQT(stream, stream.Position + length, accumulator.QuantTables);
+                            ProcessDQT<ArrayPoolAllocator>(stream, stream.Position + length, accumulator.QuantTables);
                             break;
                         case JpegMarkers.SOF0:
                         case JpegMarkers.SOF2:
@@ -77,8 +78,30 @@ public static class JpegExtensions
         return image;
     }
 
-    public static void ProcessDQT(Stream stream, long endPosition, Dictionary<byte, double[]> qTables)
+    private interface IArrayAllocator<T>
     {
+        T[] Rent(int size);
+    }
+
+    private readonly struct ArrayPoolAllocator : IArrayAllocator<double>
+    {
+        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        //public readonly double[] Rent(int size) => ArrayPool<double>.Shared.Rent(size);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly double[] Rent(int size) => new double[size];
+    }
+
+    private static void ProcessDQT<TAllocator>(Stream stream, long endPosition, Dictionary<byte, double[]> qTables)
+        where TAllocator : notnull, IArrayAllocator<double>
+    {
+        const int BLOCK_SIZE = 64;
+        const int MAX_BUFFER_SIZE = 128;
+
+        Span<byte> buffer = stackalloc byte[MAX_BUFFER_SIZE];
+
+        TAllocator allocator = default!;
+
         while (stream.Position < endPosition)
         {
             var pqTq = stream.ReadByte();
@@ -91,30 +114,33 @@ public static class JpegExtensions
             if (pq != 0 && pq != 1)
                 throw new InvalidDataException($"Unsupported DQT precision {pq} in table {tq}.");
 
-            const int SIZE = 64;
-
-            var raw = new double[SIZE];
+            var raw = allocator.Rent(BLOCK_SIZE);
             if (pq == 0)
             {
-                if (stream.Position + SIZE > endPosition)
+                if (stream.Position + BLOCK_SIZE > endPosition)
                     throw new InvalidDataException("Truncated DQT segment for 8-bit table.");
 
-                for (int i = 0; i < SIZE; i++)
-                    raw[i] = stream.ReadByte();
+                Span<byte> byteBuffer = buffer[..BLOCK_SIZE];
+                stream.ReadExactly(byteBuffer);
+
+                for (int i = 0; i < BLOCK_SIZE; i++)
+                    raw[i] = byteBuffer[i];
             }
             else
             {
-                if (stream.Position + (SIZE * 2) > endPosition)
+                if (stream.Position + MAX_BUFFER_SIZE > endPosition)
                     throw new InvalidDataException("Truncated DQT segment for 16-bit table.");
 
-                for (int i = 0; i < SIZE; i++)
-                    raw[i] = stream.ReadBigEndianUInt16();
+                stream.ReadExactly(buffer);
+
+                for (int i = 0; i < BLOCK_SIZE; i++)
+                {
+                    var offset = i * 2;
+                    raw[i] = (buffer[offset] << 8) | buffer[offset + 1];
+            }
             }
 
             qTables[tq] = raw;
-
-            if (stream.Position > endPosition)
-                throw new InvalidDataException("Truncated DQT segment.");
         }
 
         if (stream.Position != endPosition)

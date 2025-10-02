@@ -1,12 +1,42 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics.X86;
-using System.Runtime.Intrinsics;
 
 namespace Image.Otp.Core.Helpers.Jpg;
 
 public static class Upsampling
 {
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Span<double> UpsampleInPlace(this Span<double> block, byte[] output,
+        int maxH, int maxV, int width, int height, int my, int mx, int scaleX, int scaleY, int by, int bx)
+    {
+        const int BlockSize = 8;
+
+        var blockStartX = mx * maxH * BlockSize + bx * BlockSize * scaleX;
+        var blockStartY = my * maxV * BlockSize + by * BlockSize * scaleY;
+
+        return block
+            .UpsamplingScalarFallback(output, blockStartX, blockStartY, width, height, scaleX, scaleY);
+    }
+
+    private static Span<double> UpsamplingScalarFallback(this Span<double> block, byte[] output, int blockStartX, int blockStartY, int width, int height, int scaleX, int scaleY)
+    {
+        const int BLOCK_SIZE = 8;
+
+        for (int sy = 0; sy < BLOCK_SIZE; sy++)
+        {
+            for (int sx = 0; sx < BLOCK_SIZE; sx++)
+            {
+                var pixel = ConvertSampleToByte(block[sy * BLOCK_SIZE + sx]);
+
+                var baseX = blockStartX + sx * scaleX;
+                var baseY = blockStartY + sy * scaleY;
+
+                FillScaledBlock(pixel, baseX, baseY, scaleX, scaleY, width, height, output);
+            }
+        }
+
+        return block;
+    }
+
     public static byte[] UpsampleInPlace(this byte[] output, double[] block, int maxH, int maxV, int width, int height, int my, int mx,
         int scaleX, int scaleY, int by, int bx)
     {

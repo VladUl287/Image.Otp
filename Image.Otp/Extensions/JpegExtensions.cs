@@ -137,7 +137,7 @@ public static class JpegExtensions
                 {
                     var offset = i * 2;
                     raw[i] = (buffer[offset] << 8) | buffer[offset + 1];
-            }
+                }
             }
 
             qTables[tq] = raw;
@@ -319,7 +319,7 @@ public static class JpegExtensions
         foreach (var comp in frameInfo.Components)
         {
             componentBuffers[comp.Id] = ArrayPool<byte>.Shared.Rent(frameInfo.Width * frameInfo.Height);
-            Array.Fill(componentBuffers[comp.Id], (byte)128);
+            componentBuffers[comp.Id].AsSpan().Fill(128);
         }
 
         int width = frameInfo.Width;

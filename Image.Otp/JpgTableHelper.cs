@@ -51,6 +51,21 @@ public static class JpegDecoderHelpers
         return block;
     }
 
+    public static Span<double> ZigzagInPlace(this Span<double> block)
+    {
+        if (block.Length != BLOCK_SIZE)
+            throw new ArgumentException("Array must have exactly 64 elements");
+
+        Span<double> temp = stackalloc double[BLOCK_SIZE];
+        for (int i = 0; i < BLOCK_SIZE; i++)
+        {
+            temp[i] = block[ZigZag[i]];
+        }
+        temp.CopyTo(block);
+
+        return block;
+    }
+
     public static ushort[] NaturalToZigzag(ushort[] natural)
     {
         var zz = new ushort[64];

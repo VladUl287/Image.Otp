@@ -61,7 +61,7 @@ public static class JpegHelpres
         while (true)
         {
             int b = br.ReadRawByte();
-            if (b < 0) 
+            if (b < 0)
                 return -1;
 
             if (b == 0xFF)
@@ -86,22 +86,17 @@ public static class JpegHelpres
 
     public static int DecodeHuffmanSymbol(StreamBitReader br, CanonicalHuffmanTable table)
     {
-        int code = 0;
-        for (int length = 1; length <= 16; length++)
+        var code = 0;
+        for (var length = 1; length <= 16; length++)
         {
-            int bit = br.ReadBit();
+            var bit = br.ReadBit();
             if (bit < 0)
-            {
-                //Console.WriteLine($"[DecodeHuffmanSymbol] Marker/EOF encountered at bitLength={length}, code=0b{Convert.ToString(code, 2)}");
                 return -1;
-            }
 
             code = (code << 1) | bit;
 
-            if (table.TryGetSymbol(code, length, out byte sym))
-            {
+            if (table.TryGetSymbol(code, length, out var sym))
                 return sym;
-            }
         }
 
         throw new InvalidDataException("Invalid Huffman code (no symbol within 16 bits).");

@@ -8,7 +8,7 @@ namespace Image.Otp.Core.Extensions;
 
 public static class ImageExtensions
 {
-    private unsafe static Image<T> LoadJpeg<T>(byte[] bytes) where T : unmanaged, IPixel<T>
+    public unsafe static Image<T> LoadJpeg<T>(byte[] bytes) where T : unmanaged, IPixel<T>
     {
         List<JpegSegment> segments = JpegParser.ParseSegmentsWithRestartMarkers(bytes);
 

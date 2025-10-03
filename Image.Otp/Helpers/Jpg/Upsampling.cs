@@ -1,23 +1,21 @@
 ﻿using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics.X86;
 
 namespace Image.Otp.Core.Helpers.Jpg;
 
 public static class Upsampling
 {
-    public static Span<double> UpsampleInPlace(this Span<double> block, byte[] output,
-        int maxH, int maxV, int width, int height, int my, int mx, int scaleX, int scaleY, int by, int bx)
+    public static byte[] UpsampleInPlace(this byte[] output, Span<double> block, int maxH, int maxV, int width, int height, int my, int mx,
+    int scaleX, int scaleY, int by, int bx)
     {
         const int BlockSize = 8;
 
         var blockStartX = mx * maxH * BlockSize + bx * BlockSize * scaleX;
         var blockStartY = my * maxV * BlockSize + by * BlockSize * scaleY;
 
-        return block
-            .UpsamplingScalarFallback(output, blockStartX, blockStartY, width, height, scaleX, scaleY);
+        return output.UpsamplingScalarFallback(block, blockStartX, blockStartY, width, height, scaleX, scaleY);
     }
 
-    private static Span<double> UpsamplingScalarFallback(this Span<double> block, byte[] output, int blockStartX, int blockStartY, int width, int height, int scaleX, int scaleY)
+    private static byte[] UpsamplingScalarFallback(this byte[] output, Span<double> block, int blockStartX, int blockStartY, int width, int height, int scaleX, int scaleY)
     {
         const int BLOCK_SIZE = 8;
 
@@ -34,7 +32,7 @@ public static class Upsampling
             }
         }
 
-        return block;
+        return output;
     }
 
     public static byte[] UpsampleInPlace(this byte[] output, double[] block, int maxH, int maxV, int width, int height, int my, int mx,
@@ -45,23 +43,10 @@ public static class Upsampling
         var blockStartX = mx * maxH * BlockSize + bx * BlockSize * scaleX;
         var blockStartY = my * maxV * BlockSize + by * BlockSize * scaleY;
 
-        if (Avx2.IsSupported && scaleX == 1 && scaleY == 1)
-        {
-
-        }
-
-        if (Sse2.IsSupported && scaleX == 1 && scaleY == 1)
-        {
-
-        }
-
-        UpsamplingScalarFallback(blockStartX, blockStartY, width, height, scaleX, scaleY, output, block);
-
-        return output;
+        return output.UpsamplingScalarFallback(block, blockStartX, blockStartY, width, height, scaleX, scaleY);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void UpsamplingScalarFallback(int blockStartX, int blockStartY, int width, int height, int scaleX, int scaleY, byte[] output, double[] block)
+    private static byte[] UpsamplingScalarFallback(this byte[] output, double[] block, int blockStartX, int blockStartY, int width, int height, int scaleX, int scaleY)
     {
         const int BLOCK_SIZE = 8;
 
@@ -77,6 +62,8 @@ public static class Upsampling
                 FillScaledBlock(pixel, baseX, baseY, scaleX, scaleY, width, height, output);
             }
         }
+
+        return output;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -106,5 +93,4 @@ public static class Upsampling
             }
         }
     }
-
 }

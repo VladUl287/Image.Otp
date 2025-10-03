@@ -327,6 +327,10 @@ public static class JpegExtensions
 
         var huff = acc.CanonicalHuffmanTables;
 
+        var processor = PixelProcessorFactory.GetProcessor<T>();
+
+        Span<double> block = stackalloc double[64];
+
         for (int my = 0; my < mcuRows; my++)
         {
             for (int mx = 0; mx < mcuCols; mx++)
@@ -343,7 +347,7 @@ public static class JpegExtensions
                     int h = comp.HorizontalSampling;
                     int v = comp.VerticalSampling;
 
-                    byte[] compBuffer = componentBuffers[comp.Id];
+                    byte[] buffer = componentBuffers[comp.Id];
 
                     int blocksPerMcu = h * v;
 
@@ -357,8 +361,6 @@ public static class JpegExtensions
                     {
                         for (int bx = 0; bx < h; bx++)
                         {
-                            var block = ArrayPool<double>.Shared.Rent(64);
-
                             block[0] = GetDc(dcPredictor, bitReader, sc, dcTable);
 
                             SetAc(bitReader, acTable, block);
@@ -366,16 +368,15 @@ public static class JpegExtensions
                             block = block
                                 .ZigzagInPlace()
                                 .DequantizeInPlace(qTable)
-                                .Idct8x8InPlace();
+                                .Idct8x8InPlaceOpt()
+                                //.Idct8x8InPlace()
+                                ;
 
-                            var blockStartX = mx * maxH * 8 + bx * 8 * scaleX;
-                            var blockStartY = my * maxV * 8 + by * 8 * scaleY;
-
-                            compBuffer.UpsampleInPlace(block, maxH, maxV, width, height, my, mx, scaleX, scaleY, by, bx);
-
-                            ArrayPool<double>.Shared.Return(block, true);
+                            buffer.UpsampleInPlace(block, maxH, maxV, width, height, my, mx, scaleX, scaleY, by, bx);
                         }
                     }
+
+                    block.Clear();
                 }
             }
         }
@@ -383,8 +384,6 @@ public static class JpegExtensions
         byte[] yBuffer = componentBuffers[1];
         componentBuffers.TryGetValue(2, out var cbBuffer);
         componentBuffers.TryGetValue(3, out var crBuffer);
-
-        var processor = PixelProcessorFactory.GetProcessor<T>();
 
         for (int i = 0; i < width * height; i++)
         {
@@ -424,7 +423,7 @@ public static class JpegExtensions
             return (short)dcVal;
         }
 
-        static void SetAc(StreamBitReader bitReader, CanonicalHuffmanTable acTable, double[] block)
+        static void SetAc(StreamBitReader bitReader, CanonicalHuffmanTable acTable, Span<double> block)
         {
             int k = 1;
             while (k < 64)

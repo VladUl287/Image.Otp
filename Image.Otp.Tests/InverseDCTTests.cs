@@ -1,4 +1,4 @@
-﻿using Image.Otp.Core.Helpers.Jpg;
+﻿using Image.Otp.Core.Extensions;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Image.Otp.Tests;
@@ -14,7 +14,7 @@ public class InverseDCTTests
         double[] block = null;
 
         // Act & Assert
-        Assert.Throws<ArgumentNullException>(() => block.Idct8x8InPlace());
+        Assert.Throws<ArgumentNullException>(() => block.Idct8x8ScalarInPlace());
     }
 
     [Fact]
@@ -24,7 +24,7 @@ public class InverseDCTTests
         double[] block = new double[63];
 
         // Act & Assert
-        var exception = Assert.Throws<ArgumentException>(() => block.Idct8x8InPlace());
+        var exception = Assert.Throws<ArgumentException>(() => block.Idct8x8ScalarInPlace());
         Assert.Contains("Block must have exactly 64 elements", exception.Message);
     }
 
@@ -36,7 +36,7 @@ public class InverseDCTTests
         double[] expected = new double[64];
 
         // Act
-        var result = block.Idct8x8InPlace();
+        var result = block.Idct8x8ScalarInPlace();
 
         // Assert
         Assert.Equal(expected, result, new DoubleComparer(Tolerance));
@@ -59,7 +59,7 @@ public class InverseDCTTests
         }
 
         // Act
-        var result = block.Idct8x8InPlace();
+        var result = block.Idct8x8ScalarInPlace();
 
         // Assert
         Assert.Equal(expected, result, new DoubleComparer(Tolerance));
@@ -86,7 +86,7 @@ public class InverseDCTTests
         }
 
         // Act
-        var result = block.Idct8x8InPlace();
+        var result = block.Idct8x8ScalarInPlace();
 
         // Assert
         Assert.Equal(expected, result, new DoubleComparer(Tolerance));
@@ -135,7 +135,7 @@ public class InverseDCTTests
         }
 
         // Act
-        var result = block.Idct8x8InPlace();
+        var result = block.Idct8x8ScalarInPlace();
 
         // Assert
         Assert.Equal(expected, result, new DoubleComparer(Tolerance));
@@ -150,7 +150,7 @@ public class InverseDCTTests
         double[] originalReference = block; // Keep reference to original array
 
         // Act
-        var result = block.Idct8x8InPlace();
+        var result = block.Idct8x8ScalarInPlace();
 
         // Assert
         Assert.Same(originalReference, result);
@@ -177,7 +177,7 @@ public class InverseDCTTests
         block[63] = 100.0; // Highest frequency component
 
         // Act
-        var result = block.Idct8x8InPlace();
+        var result = block.Idct8x8ScalarInPlace();
 
         // Assert - check that values are within reasonable range
         double maxValue = double.MinValue;

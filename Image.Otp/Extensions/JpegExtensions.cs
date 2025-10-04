@@ -30,6 +30,8 @@ public static class JpegExtensions
 
         var accumulator = new Accumulator();
 
+        ArrayPoolAllocator allocator = default;
+
         while (stream.Position < stream.Length)
         {
             var marker = stream.ReadByte();
@@ -51,7 +53,7 @@ public static class JpegExtensions
                     switch (marker)
                     {
                         case JpegMarkers.DQT:
-                            ProcessDQT<ArrayPoolAllocator>(stream, stream.Position + length, accumulator.QuantTables);
+                            ProcessDQT(stream, stream.Position + length, accumulator.QuantTables, allocator);
                             break;
                         case JpegMarkers.SOF0:
                         case JpegMarkers.SOF2:
@@ -75,32 +77,34 @@ public static class JpegExtensions
             }
         }
 
+        foreach (var qTable in accumulator.QuantTables.Values)
+            allocator.Return(qTable);
+
         return image;
     }
 
     private interface IArrayAllocator<T>
     {
         T[] Rent(int size);
+        void Return(T[] values);
     }
 
     private readonly struct ArrayPoolAllocator : IArrayAllocator<double>
     {
-        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        //public readonly double[] Rent(int size) => ArrayPool<double>.Shared.Rent(size);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly double[] Rent(int size) => ArrayPool<double>.Shared.Rent(size);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly double[] Rent(int size) => new double[size];
+        public readonly void Return(double[] values) => ArrayPool<double>.Shared.Return(values);
     }
 
-    private static void ProcessDQT<TAllocator>(Stream stream, long endPosition, Dictionary<byte, double[]> qTables)
+    private static void ProcessDQT<TAllocator>(Stream stream, long endPosition, Dictionary<byte, double[]> qTables, TAllocator allocator)
         where TAllocator : notnull, IArrayAllocator<double>
     {
         const int BLOCK_SIZE = 64;
         const int MAX_BUFFER_SIZE = 128;
 
         Span<byte> buffer = stackalloc byte[MAX_BUFFER_SIZE];
-
-        TAllocator allocator = default!;
 
         while (stream.Position < endPosition)
         {

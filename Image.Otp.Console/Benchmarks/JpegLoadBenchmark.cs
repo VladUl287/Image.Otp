@@ -1,5 +1,4 @@
 ﻿using BenchmarkDotNet.Attributes;
-using Image.Otp.Core.Formats;
 using Image.Otp.Core.Loaders;
 using Image.Otp.Core.Primitives;
 
@@ -61,18 +60,7 @@ public class JpegLoadBenchmark
     public int LoadJpegImageSharpStream()
     {
         using var stream = new FileStream(JpegBaseLine, FileMode.Open);
-        using var image = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(stream);
-        var size = image.Width * image.Height;
-        image.Dispose();
-        return size;
-    }
-
-    private readonly static ImageLoader uniLoader = new(new BaseFormatResolver(), [new JpegLoader()]);
-
-    [Benchmark]
-    public int LoadJpegUniversalLoader()
-    {
-        using var image = uniLoader.Load<Rgba32>(JpegBaseLine);
+        using var image = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgb24>(stream);
         var size = image.Width * image.Height;
         image.Dispose();
         return size;
@@ -83,7 +71,7 @@ public class JpegLoadBenchmark
     [Benchmark]
     public int LoadJpegSpecificLoader()
     {
-        using var image = jpegLoader.Load<Rgba32>(JpegBaseLine);
+        using var image = jpegLoader.Load<Rgb24>(JpegBaseLine);
         var size = image.Width * image.Height;
         image.Dispose();
         return size;

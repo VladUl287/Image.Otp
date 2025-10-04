@@ -368,9 +368,7 @@ public static class JpegExtensions
                             block = block
                                 .ZigzagInPlace()
                                 .DequantizeInPlace(qTable)
-                                .Idct8x8InPlaceOpt()
-                                //.Idct8x8InPlace()
-                                ;
+                                .Idct8x8InPlace();
 
                             buffer.UpsampleInPlace(block, maxH, maxV, width, height, my, mx, scaleX, scaleY, by, bx);
                         }

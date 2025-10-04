@@ -5,7 +5,6 @@ using Image.Otp.Core.Pixels;
 using Image.Otp.Core.Helpers.Jpg;
 using System.Buffers;
 using Image.Otp.Abstractions;
-using System.Runtime.CompilerServices;
 
 namespace Image.Otp.Core.Extensions;
 
@@ -30,7 +29,7 @@ public static class JpegExtensions
 
         var accumulator = new Accumulator();
 
-        ArrayPoolAllocator allocator = default;
+        DefaultArrayPool<double> doublePool = default;
 
         while (stream.Position < stream.Length)
         {
@@ -53,7 +52,7 @@ public static class JpegExtensions
                     switch (marker)
                     {
                         case JpegMarkers.DQT:
-                            ProcessDQT(stream, stream.Position + length, accumulator.QuantTables, allocator);
+                            ProcessDQT(stream, stream.Position + length, accumulator.QuantTables, doublePool);
                             break;
                         case JpegMarkers.SOF0:
                         case JpegMarkers.SOF2:
@@ -78,28 +77,13 @@ public static class JpegExtensions
         }
 
         foreach (var qTable in accumulator.QuantTables.Values)
-            allocator.Return(qTable);
+            doublePool.Return(qTable);
 
         return image;
     }
 
-    private interface IArrayAllocator<T>
-    {
-        T[] Rent(int size);
-        void Return(T[] values);
-    }
-
-    private readonly struct ArrayPoolAllocator : IArrayAllocator<double>
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly double[] Rent(int size) => ArrayPool<double>.Shared.Rent(size);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly void Return(double[] values) => ArrayPool<double>.Shared.Return(values);
-    }
-
     private static void ProcessDQT<TAllocator>(Stream stream, long endPosition, Dictionary<byte, double[]> qTables, TAllocator allocator)
-        where TAllocator : notnull, IArrayAllocator<double>
+        where TAllocator : notnull, IArrayPool<double>
     {
         const int BLOCK_SIZE = 64;
         const int MAX_BUFFER_SIZE = 128;

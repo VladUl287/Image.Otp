@@ -113,7 +113,7 @@ public static class JpegExtensions
                 stream.ReadExactly(byteBuffer);
 
                 for (int i = 0; i < BLOCK_SIZE; i++)
-                    raw[i] = byteBuffer[JpegDecoderHelpers.ZigZag[i]];
+                    raw[i] = byteBuffer[i];
             }
             else
             {
@@ -127,8 +127,6 @@ public static class JpegExtensions
                     var offset = i * 2;
                     raw[i] = (buffer[offset] << 8) | buffer[offset + 1];
                 }
-
-                raw.ZigzagInPlace();
             }
 
             qTables[tq] = raw;
@@ -350,8 +348,8 @@ public static class JpegExtensions
                             SetAc(bitReader, acTable, block);
 
                             block = block
-                                .ZigzagInPlace()
                                 .DequantizeInPlace(qTable)
+                                .ZigZagInPlace()
                                 .Idct8x8InPlace();
 
                             buffer.UpsampleInPlace(block, maxH, maxV, width, height, my, mx, scaleX, scaleY, by, bx);

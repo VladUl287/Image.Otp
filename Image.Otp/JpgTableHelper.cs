@@ -51,7 +51,7 @@ public static class JpegDecoderHelpers
         return block;
     }
 
-    public static Span<double> ZigzagInPlace(this Span<double> block)
+    public static Span<double> ZigZagInPlace(this Span<double> block)
     {
         if (block.Length != BLOCK_SIZE)
             throw new ArgumentException("Array must have exactly 64 elements");

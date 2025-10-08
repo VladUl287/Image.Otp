@@ -2,9 +2,10 @@
 using Image.Otp.Core.Helpers;
 using Image.Otp.Core.Models.Jpeg;
 using Image.Otp.Core.Pixels;
-using Image.Otp.Core.Helpers.Jpg;
 using System.Buffers;
 using Image.Otp.Abstractions;
+using System.Collections.Frozen;
+using Image.Otp.Core.Helpers.Jpg;
 
 namespace Image.Otp.Core.Extensions;
 
@@ -16,9 +17,9 @@ public static class JpegExtensions
 
         public SOSSegment ScanInfo { get; set; } = default!;
 
-        public Dictionary<byte, double[]> QuantTables { get; set; } = [];
+        public Dictionary<byte, double[]> QuantTables { get; init; } = [];
 
-        public Dictionary<(byte Class, byte Id), CanonicalHuffmanTable> CanonicalHuffmanTables { get; set; } = [];
+        public Dictionary<(byte Class, byte Id), CanonicalHuffmanTable> CanonicalHuffmanTables { get; init; } = [];
 
         public int RestartInterval { get; set; }
     }
@@ -288,75 +289,69 @@ public static class JpegExtensions
         if (scan.Ss != 0 || scan.Se != 63 || scan.Ah != 0 || scan.Al != 0)
             throw new ArgumentException("This decoder only supports baseline non-progressive scans (Ss=0,Se=63,Ah=0,Al=0).");
 
-        var sofComponents = frameInfo.Components.ToDictionary(c => c.Id);
+        var sofComponents = frameInfo.Components.ToFrozenDictionary(c => c.Id);
+        var sosComponents = scan.Components.AsSpan();
 
-        var sosComponents = scan.Components;
+        var maxH = frameInfo.Components.Max(c => c.HorizontalSampling);
+        var maxV = frameInfo.Components.Max(c => c.VerticalSampling);
 
-        int maxH = frameInfo.Components.Max(c => c.HorizontalSampling);
-        int maxV = frameInfo.Components.Max(c => c.VerticalSampling);
-
-        int mcuCols = (frameInfo.Width + (8 * maxH - 1)) / (8 * maxH);
-        int mcuRows = (frameInfo.Height + (8 * maxV - 1)) / (8 * maxV);
+        var mcuCols = (frameInfo.Width + (8 * maxH - 1)) / (8 * maxH);
+        var mcuRows = (frameInfo.Height + (8 * maxV - 1)) / (8 * maxV);
 
         var dcPredictor = new Dictionary<byte, int>(sosComponents.Length);
-        foreach (var sc in sosComponents) dcPredictor[sc.ComponentId] = 0;
+        foreach (var sc in sosComponents)
+            dcPredictor[sc.ComponentId] = 0;
 
-        var bitReader = new StreamBitReader(stream);
-
-        var componentBuffers = new Dictionary<byte, byte[]>();
+        var componentBuffers = new Dictionary<byte, byte[]>(frameInfo.Components.Length);
         foreach (var comp in frameInfo.Components)
         {
             componentBuffers[comp.Id] = ArrayPool<byte>.Shared.Rent(frameInfo.Width * frameInfo.Height);
             componentBuffers[comp.Id].AsSpan().Fill(128);
         }
 
-        int width = frameInfo.Width;
-        int height = frameInfo.Height;
+        var huff = acc.CanonicalHuffmanTables.ToFrozenDictionary();
+        var qTables = acc.QuantTables.ToFrozenDictionary();
 
-        var huff = acc.CanonicalHuffmanTables;
+        //TODO: use nativememory and parallel processing
+        var bitReader = new StreamBitReader(stream);
 
-        var processor = PixelProcessorFactory.GetProcessor<T>();
+        var width = frameInfo.Width;
+        var height = frameInfo.Height;
 
         Span<double> block = stackalloc double[64];
-
-        for (int my = 0; my < mcuRows; my++)
+        for (var my = 0; my < mcuRows; my++)
         {
-            for (int mx = 0; mx < mcuCols; mx++)
+            for (var mx = 0; mx < mcuCols; mx++)
             {
                 foreach (var sc in sosComponents)
                 {
                     var comp = sofComponents[sc.ComponentId];
 
-                    if (!acc.QuantTables.TryGetValue(comp.QuantizationTableId, out var qTable))
-                    {
+                    if (!qTables.TryGetValue(comp.QuantizationTableId, out var qTable))
                         throw new InvalidOperationException($"Quantization table {comp.QuantizationTableId} not found.");
-                    }
 
-                    int h = comp.HorizontalSampling;
-                    int v = comp.VerticalSampling;
-
-                    byte[] buffer = componentBuffers[comp.Id];
-
-                    int blocksPerMcu = h * v;
+                    var buffer = componentBuffers[comp.Id];
 
                     var dcTable = huff[(0, sc.DcHuffmanTableId)];
                     var acTable = huff[(1, sc.AcHuffmanTableId)];
 
-                    int scaleX = maxH / h;
-                    int scaleY = maxV / v;
+                    var h = comp.HorizontalSampling;
+                    var v = comp.VerticalSampling;
+                    var scaleX = maxH / h;
+                    var scaleY = maxV / v;
 
                     for (int by = 0; by < v; by++)
                     {
                         for (int bx = 0; bx < h; bx++)
                         {
                             block[0] = GetDc(dcPredictor, bitReader, sc, dcTable);
-
                             SetAc(bitReader, acTable, block);
 
                             block = block
                                 .ZigzagInPlace()
                                 .DequantizeInPlace(qTable)
-                                .Idct8x8InPlace();
+                                .Idct8x8InPlace()
+                                ;
 
                             buffer.UpsampleInPlace(block, maxH, maxV, width, height, my, mx, scaleX, scaleY, by, bx);
                         }
@@ -371,6 +366,8 @@ public static class JpegExtensions
         componentBuffers.TryGetValue(2, out var cbBuffer);
         componentBuffers.TryGetValue(3, out var crBuffer);
 
+        var processor = PixelProcessorFactory.GetProcessor<T>();
+
         for (int i = 0; i < width * height; i++)
         {
             byte yVal = yBuffer[i];
@@ -384,7 +381,7 @@ public static class JpegExtensions
         if (cbBuffer is not null) ArrayPool<byte>.Shared.Return(cbBuffer, true);
         if (crBuffer is not null) ArrayPool<byte>.Shared.Return(crBuffer, true);
 
-        static short GetDc(Dictionary<byte, int> dcPredictor, StreamBitReader bitReader, ScanComponent sc, CanonicalHuffmanTable dcTable)
+        static int GetDc(Dictionary<byte, int> dcPredictor, StreamBitReader bitReader, ScanComponent sc, CanonicalHuffmanTable dcTable)
         {
             var sym = JpegHelpres.DecodeHuffmanSymbol(bitReader, dcTable);
             if (sym < 0)
@@ -406,7 +403,7 @@ public static class JpegExtensions
             var dcVal = prevDc + dcDiff;
             dcPredictor[sc.ComponentId] = dcVal;
 
-            return (short)dcVal;
+            return dcVal;
         }
 
         static void SetAc(StreamBitReader bitReader, CanonicalHuffmanTable acTable, Span<double> block)
@@ -419,14 +416,14 @@ public static class JpegExtensions
                     throw new EndOfStreamException("Marker or EOF encountered while decoding AC.");
 
                 if (acSym == 0x00)
-                {
                     break;
-                }
+
                 if (acSym == 0xF0)
                 {
                     k += 16;
                     continue;
                 }
+
                 int run = (acSym >> 4) & 0x0F;
                 int size = acSym & 0x0F;
                 k += run;
@@ -440,8 +437,8 @@ public static class JpegExtensions
                     if (bits < 0) throw new EndOfStreamException("EOF/marker while reading AC bits.");
                 }
 
-                int level = JpegDecoderHelpers.ExtendSign(bits, size);
-                block[k] = (short)level;
+                var level = JpegDecoderHelpers.ExtendSign(bits, size);
+                block[k] = level;
                 k++;
             }
         }

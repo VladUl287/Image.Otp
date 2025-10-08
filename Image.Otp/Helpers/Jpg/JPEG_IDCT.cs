@@ -106,7 +106,7 @@ public static class JPEG_IDCT
                 double sum = 0.0;
                 for (int u = 0; u < 8; u++)
                 {
-                    sum += Coefficient(u) * block[y * 8 + u] * Math.Cos((2 * x + 1) * u * Math.PI / 16.0);
+                    sum += C(u) * block[y * 8 + u] * Math.Cos((2 * x + 1) * u * Math.PI / 16.0);
                 }
                 tmp[y * 8 + x] = sum * 0.5;
             }
@@ -120,9 +120,7 @@ public static class JPEG_IDCT
                 double sum = 0.0;
                 for (int v = 0; v < 8; v++)
                 {
-                    var cos = Math.Cos((2 * y + 1) * v * Math.PI / 16.0);
-                    var coun = Coefficient(v) * tmp[v * 8 + x] * cos;
-                    sum += coun;
+                    sum += C(v) * tmp[v * 8 + x] * Math.Cos(((2 * y + 1) * v * Math.PI) / 16.0);
                 }
                 block[y * 8 + x] = sum * 0.5;
             }
@@ -130,5 +128,5 @@ public static class JPEG_IDCT
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static double Coefficient(int u) => u == 0 ? 1.0 / Math.Sqrt(2.0) : 1.0;
+    public static double C(int u) => u == 0 ? 1.0 / Math.Sqrt(2.0) : 1.0;
 }

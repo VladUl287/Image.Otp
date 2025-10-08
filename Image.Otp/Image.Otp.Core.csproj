@@ -12,10 +12,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Processors\" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\Image.Otp.Abstractions\Image.Otp.Abstractions.csproj" />
   </ItemGroup>
 

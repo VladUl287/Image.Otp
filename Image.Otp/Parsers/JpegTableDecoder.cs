@@ -250,13 +250,7 @@ public static class JpegTableDecoder
                     }
                 }
 
-                // normalize to natural (row-major) order
-                //var natural = new ushort[valueCount];
-                //for (int i = 0; i < valueCount; i++)
-                //{
-                //    natural[ZigZag[i]] = raw[i]; // wire index i -> natural index ZigZag[i]
-                //}
-                var natural = JpegDecoderHelpers.NaturalToZigzag(raw);
+                var natural = JpegBlockProcessor.ZigZagToNatural(raw);
 
                 tables[tq] = new QuantizationTable
                 {

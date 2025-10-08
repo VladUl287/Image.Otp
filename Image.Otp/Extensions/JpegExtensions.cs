@@ -349,7 +349,7 @@ public static class JpegExtensions
 
                             block = block
                                 .DequantizeInPlace(qTable)
-                                .ZigZagInPlace()
+                                .ZigZagToNaturalInPlace()
                                 .Idct8x8InPlace();
 
                             buffer.UpsampleInPlace(block, maxH, maxV, width, height, my, mx, scaleX, scaleY, by, bx);
@@ -395,7 +395,7 @@ public static class JpegExtensions
                 if (bits < 0)
                     throw new EndOfStreamException("EOF/marker while reading DC bits.");
 
-                dcDiff = JpegDecoderHelpers.ExtendSign(bits, magnitude);
+                dcDiff = JpegBlockProcessor.ExtendSign(bits, magnitude);
             }
 
             var prevDc = dcPredictor[sc.ComponentId];
@@ -436,7 +436,7 @@ public static class JpegExtensions
                     if (bits < 0) throw new EndOfStreamException("EOF/marker while reading AC bits.");
                 }
 
-                var level = JpegDecoderHelpers.ExtendSign(bits, size);
+                var level = JpegBlockProcessor.ExtendSign(bits, size);
                 block[k] = level;
                 k++;
             }

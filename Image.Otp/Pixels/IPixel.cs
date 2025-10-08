@@ -1,7 +1,6 @@
 ﻿using Image.Otp.Abstractions;
 using Image.Otp.Core.Primitives;
 using System.Numerics;
-using System.Runtime.Intrinsics;
 
 namespace Image.Otp.Core.Pixels;
 

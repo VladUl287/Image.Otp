@@ -272,7 +272,7 @@ public static class JpegExtensions
         DecodeScanToBlocks(stream, accumulator, output);
     }
 
-    private static void DecodeScanToBlocks<T>(
+    private unsafe static void DecodeScanToBlocks<T>(
         Stream stream,
         Accumulator acc,
         Span<T> output) where T : unmanaged, IPixel<T>
@@ -289,7 +289,7 @@ public static class JpegExtensions
         if (scan.Ss != 0 || scan.Se != 63 || scan.Ah != 0 || scan.Al != 0)
             throw new ArgumentException("This decoder only supports baseline non-progressive scans (Ss=0,Se=63,Ah=0,Al=0).");
 
-        var sofComponents = frameInfo.Components.ToFrozenDictionary(c => c.Id);
+        var sofComponents = frameInfo.Components.ToDictionary(c => c.Id);
         var sosComponents = scan.Components.AsSpan();
 
         var maxH = frameInfo.Components.Max(c => c.HorizontalSampling);
@@ -309,10 +309,9 @@ public static class JpegExtensions
             componentBuffers[comp.Id].AsSpan().Fill(128);
         }
 
-        var huff = acc.CanonicalHuffmanTables.ToFrozenDictionary();
-        var qTables = acc.QuantTables.ToFrozenDictionary();
+        var huff = acc.CanonicalHuffmanTables;
+        var qTables = acc.QuantTables;
 
-        //TODO: use nativememory and parallel processing
         var bitReader = new StreamBitReader(stream);
 
         var width = frameInfo.Width;
@@ -326,9 +325,8 @@ public static class JpegExtensions
                 foreach (var sc in sosComponents)
                 {
                     var comp = sofComponents[sc.ComponentId];
-
-                    if (!qTables.TryGetValue(comp.QuantizationTableId, out var qTable))
-                        throw new InvalidOperationException($"Quantization table {comp.QuantizationTableId} not found.");
+                    var qTable = qTables[comp.QuantizationTableId]
+                        ?? throw new InvalidOperationException($"Quantization table {comp.QuantizationTableId} not found.");
 
                     var buffer = componentBuffers[comp.Id];
 
@@ -350,7 +348,8 @@ public static class JpegExtensions
                             block = block
                                 .DequantizeInPlace(qTable)
                                 .ZigZagToNaturalInPlace()
-                                .Idct8x8InPlace();
+                                .Idct8x8InPlace()
+                                ;
 
                             buffer.UpsampleInPlace(block, maxH, maxV, width, height, my, mx, scaleX, scaleY, by, bx);
                         }
@@ -367,13 +366,11 @@ public static class JpegExtensions
 
         var processor = PixelProcessorFactory.GetProcessor<T>();
 
-        for (int i = 0; i < width * height; i++)
+        fixed (byte* yPtr = yBuffer)
+        fixed (byte* cbPtr = cbBuffer)
+        fixed (byte* crPtr = crBuffer)
         {
-            byte yVal = yBuffer[i];
-            byte cbVal = cbBuffer != null ? cbBuffer[i] : (byte)128;
-            byte crVal = crBuffer != null ? crBuffer[i] : (byte)128;
-
-            output[i] = processor.FromYCbCr(yVal, cbVal, crVal);
+            processor.FromYCbCr(yPtr, cbPtr, crPtr, output);
         }
 
         ArrayPool<byte>.Shared.Return(yBuffer, true);

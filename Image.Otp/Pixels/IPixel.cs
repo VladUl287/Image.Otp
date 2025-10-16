@@ -1,6 +1,8 @@
 ﻿using Image.Otp.Abstractions;
 using Image.Otp.Core.Primitives;
-using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 
 namespace Image.Otp.Core.Pixels;
 
@@ -53,39 +55,103 @@ public unsafe class Rgb24Processor : IPixelProcessor<Rgb24>
         return new Rgb24((byte)r, (byte)g, (byte)b);
     }
 
-    public void FromYCbCr(ReadOnlySpan<byte> y, ReadOnlySpan<byte> cb, ReadOnlySpan<byte> cr, Span<Rgb24> output)
+    public void FromYCbCr(byte* y, byte* cb, byte* cr, Span<Rgb24> output)
     {
-        var const128 = new Vector<int>(128);
-        var zeroInt = Vector<int>.Zero;
-        var Yd = new Vector<int>(y);
-        var Cbd = cb.IsEmpty ? zeroInt : new Vector<int>(cb) - const128;
-        var Crd = cr.IsEmpty ? zeroInt : new Vector<int>(cr) - const128;
-
-        var yFloat = Vector.ConvertToSingle(Yd);
-        var cbFloat = Vector.ConvertToSingle(Cbd);
-        var crFloat = Vector.ConvertToSingle(Crd);
-
-        // Calculate RGB components
-        var r = yFloat + 1.402f * crFloat;
-        var g = yFloat - 0.344136f * cbFloat - 0.714136f * crFloat;
-        var b = yFloat + 1.772f * cbFloat;
-
-        // Clamp and convert back to bytes
-        var zero = Vector<float>.Zero;
-        var maxColor = new Vector<float>(255);
-
-        var rClamped = Vector.Min(Vector.Max(r, zero), maxColor);
-        var gClamped = Vector.Min(Vector.Max(g, zero), maxColor);
-        var bClamped = Vector.Min(Vector.Max(b, zero), maxColor);
-        
-        var count = Vector<float>.Count;
-        for (int i = 0; i < count; i++)
+        if (!Avx.IsSupported)
         {
-            output[i] = new Rgb24(
-                (byte)rClamped[i],
-                (byte)gClamped[i],
-                (byte)bClamped[i]
-            );
+            for (int j = 0; j < output.Length; j++)
+                output[j] = FromYCbCr(y[j], cb[j], cr[j]);
+            return;
+        }
+
+        var c128 = Vector256.Create(128f);
+
+        var maxColor = Vector256.Create(255f);
+        var zero = Vector256.Create(0f);
+
+        var f1_402 = Vector256.Create(1.402f);
+        var f0_344 = Vector256.Create(-0.344136f);
+        var f0_714 = Vector256.Create(-0.714136f);
+        var f1_772 = Vector256.Create(1.772f);
+
+        var vectorCount = Vector256<float>.Count;
+
+        var i = 0;
+        //var byteSpan = MemoryMarshal.AsBytes(output);
+        //fixed (byte* bytePtr = byteSpan)
+        //{
+        for (; i < output.Length - vectorCount; i += vectorCount)
+        {
+            // Load and convert to float
+            var yVec = Avx.ConvertToVector256Single(Avx2.ConvertToVector256Int32(y + i));
+            var cbVec = Avx.ConvertToVector256Single(Avx2.ConvertToVector256Int32(cb + i));
+            var crVec = Avx.ConvertToVector256Single(Avx2.ConvertToVector256Int32(cr + i));
+
+            cbVec = Avx.Subtract(cbVec, c128);
+            crVec = Avx.Subtract(crVec, c128);
+
+            // Calculate R, G, B
+            var rFloat = Avx.Add(yVec, Avx.Multiply(crVec, f1_402));
+            var bFloat = Avx.Add(yVec, Avx.Multiply(cbVec, f1_772));
+            var gFloat = Avx.Add(yVec, Avx.Add(
+                Avx.Multiply(cbVec, f0_344),
+                Avx.Multiply(crVec, f0_714)));
+
+            // Clamp to [0, 255]
+            rFloat = Avx.Min(Avx.Max(rFloat, zero), maxColor);
+            gFloat = Avx.Min(Avx.Max(gFloat, zero), maxColor);
+            bFloat = Avx.Min(Avx.Max(bFloat, zero), maxColor);
+
+            var rInt = Avx.ConvertToVector256Int32(rFloat);
+            var gInt = Avx.ConvertToVector256Int32(gFloat);
+            var bInt = Avx.ConvertToVector256Int32(bFloat);
+
+            //var rgb16 = Avx2.PackUnsignedSaturate(
+            //    Avx2.PackSignedSaturate(rInt, gInt),
+            //    Avx2.PackSignedSaturate(bInt, Vector256<int>.Zero)
+            //);
+
+            //var lower = rgb16.GetLower();
+            //var upper = rgb16.GetUpper();
+            //StoreRgbPixels(bytePtr + i, lower, upper);
+
+            for (int j = 0; j < vectorCount; j++)
+            {
+                var r = (byte)rInt.GetElement(j); // R
+                var g = (byte)gInt.GetElement(j); // G  
+                var b = (byte)bInt.GetElement(j); // B
+                output[j + i] = new Rgb24(r, g, b);
+            }
+        }
+        //}
+
+        for (; i < output.Length; i++)
+            output[i] = FromYCbCr(y[i], cb[i], cr[i]);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void StoreRgbPixels(byte* dest, Vector128<byte> lower, Vector128<byte> upper)
+    {
+        // Rearrange from RRRRGGGGBBBB to RGBRGBRGBRGB
+        if (Ssse3.IsSupported)
+        {
+            // Use SSSE3 for better pixel packing if available
+            var shuffleMask = Vector128.Create((byte)0, 4, 8, 1, 5, 9, 2, 6, 10, 3, 7, 11, 12, 13, 14, 15);
+
+            var shuffledLower = Ssse3.Shuffle(lower, shuffleMask);
+            var shuffledUpper = Ssse3.Shuffle(upper, shuffleMask);
+
+            Sse2.Store(dest, shuffledLower);
+            Sse2.Store(dest + 12, shuffledUpper);
+        }
+        else
+        {
+            for (int j = 0; j < 8; j++)
+            {
+                dest[j * 3] = lower.GetElement(j);     // R
+                dest[j * 3 + 1] = lower.GetElement(j + 8); // G  
+                dest[j * 3 + 2] = upper.GetElement(j);     // B
+            }
         }
     }
 

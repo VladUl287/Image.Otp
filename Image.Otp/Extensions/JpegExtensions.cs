@@ -351,7 +351,11 @@ public static class JpegExtensions
                                 .Idct8x8InPlace()
                                 ;
 
-                            buffer.UpsampleInPlace(block, maxH, maxV, width, height, my, mx, scaleX, scaleY, by, bx);
+                            const int BLOCK_SIZE = 8;
+                            var blockStartX = mx * maxH * BLOCK_SIZE + bx * BLOCK_SIZE * scaleX;
+                            var blockStartY = my * maxV * BLOCK_SIZE + by * BLOCK_SIZE * scaleY;
+
+                            buffer.UpsampleInPlace(block, width, height, scaleX, scaleY, blockStartX, blockStartY);
                         }
                     }
 

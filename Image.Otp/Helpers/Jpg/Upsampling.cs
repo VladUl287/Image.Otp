@@ -8,16 +8,32 @@ public static class Upsampling
     {
         const int BLOCK_SIZE = 8;
 
-        for (int sy = 0; sy < BLOCK_SIZE; sy++)
+        Span<byte> pixels = stackalloc byte[BLOCK_SIZE * BLOCK_SIZE];
+        for (var i = 0; i < BLOCK_SIZE * BLOCK_SIZE; i++)
+            pixels[i] = ConvertSampleToByte(block[i]);
+
+        for (var sy = 0; sy < BLOCK_SIZE; sy++)
         {
-            for (int sx = 0; sx < BLOCK_SIZE; sx++)
+            var pixelRow = pixels.Slice(sy * BLOCK_SIZE, BLOCK_SIZE);
+            var baseY = blockStartY + sy * scaleY;
+
+            var endY = Math.Min(baseY + scaleY, height);
+            var startY = Math.Max(baseY, 0);
+
+            for (var y = startY; y < endY; y++)
             {
-                var pixel = ConvertSampleToByte(block[sy * BLOCK_SIZE + sx]);
+                var rowOffset = y * width;
+                for (var sx = 0; sx < BLOCK_SIZE; sx++)
+                {
+                    var pixel = pixelRow[sx];
+                    var baseX = blockStartX + sx * scaleX;
 
-                var baseX = blockStartX + sx * scaleX;
-                var baseY = blockStartY + sy * scaleY;
+                    var endX = Math.Min(baseX + scaleX, width);
+                    var startX = Math.Max(baseX, 0);
 
-                FillScaledBlock(pixel, baseX, baseY, scaleX, scaleY, width, height, output);
+                    for (var x = startX; x < endX; x++)
+                        output[rowOffset + x] = pixel;
+                }
             }
         }
 
@@ -27,9 +43,9 @@ public static class Upsampling
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte ConvertSampleToByte(double sample)
     {
-        const double OFFSET = 128.0;
-        var value = (int)Math.Round(sample + OFFSET);
-        return (byte)Math.Clamp(value, 0, 255);
+        int value = (int)(sample + 128.5);
+        uint clamped = (uint)Math.Max(0, Math.Min(value, 255));
+        return (byte)clamped;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

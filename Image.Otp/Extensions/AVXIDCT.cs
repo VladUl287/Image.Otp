@@ -27,23 +27,22 @@ public unsafe class AVXIDCT
 
     }
 
-    public static void TransformBlockAVX(float* block)
+    public static void TransformBlockAVX(Span<float> block)
     {
-        Span<float> resultBlock = stackalloc float[64];
         Span<float> temp = stackalloc float[64];
 
-        fixed (float* result = temp)
+        fixed (float* blockPtr = block)
+        fixed (float* tempPtr = temp)
         {
             for (int row = 0; row < 8; row++)
             {
-                float* rowPtr = block + row * 8;
-                float* resultPtr = result + row * 8;
+                float* rowPtr = blockPtr + row * 8;
+                float* tempRowPtr = tempPtr + row * 8;
 
                 Vector256<float> rowData = Avx.LoadVector256(rowPtr);
+                Vector256<float> transformedRow = ButterflyWithinRow(rowData);
 
-                Vector256<float> transformed = ButterflyWithinRow(rowData);
-
-                Avx.Store(resultPtr, transformed);
+                Avx.Store(tempRowPtr, transformedRow);
             }
         }
 
@@ -51,23 +50,24 @@ public unsafe class AVXIDCT
         Transpose8x8(temp, trans);
 
         fixed (float* transPtr = trans)
-        fixed (float* result = temp)
+        fixed (float* tempPtr = temp)
         {
             for (int row = 0; row < 8; row++)
             {
                 float* rowPtr = transPtr + row * 8;
-                float* resultPtr = result + row * 8;
+                float* tempRowPtr = tempPtr + row * 8;
 
                 Vector256<float> rowData = Avx.LoadVector256(rowPtr);
-                Vector256<float> transformed = ButterflyWithinRow(rowData);
-                Avx.Store(resultPtr, transformed);
+                Vector256<float> transformedRow = ButterflyWithinRow(rowData);
+
+                Avx.Store(tempRowPtr, transformedRow);
             }
         }
 
-        Transpose8x8(temp, resultBlock);
+        Transpose8x8(temp, block);
 
         for (var j = 0; j < 64; j++)
-            resultBlock[j] *= 0.125f;
+            block[j] *= 0.125f;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

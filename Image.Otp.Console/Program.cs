@@ -9,8 +9,8 @@ using Image.Otp.Core.Primitives;
 
 //new IDCTBenchmark().Compute_BlockF_Sse();
 
-BenchmarkRunner.Run<IDCTBenchmark>();
-return;
+//BenchmarkRunner.Run<IDCTBenchmark>();
+//return;
 
 var formatResovler = new BaseFormatResolver();
 var loaders = new IImageLoader[] { new JpegLoader(), new BmpLoader() };

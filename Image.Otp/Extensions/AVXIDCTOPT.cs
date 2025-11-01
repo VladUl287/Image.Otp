@@ -3,9 +3,271 @@ using System.Runtime.Intrinsics.X86;
 using System.Runtime.Intrinsics;
 
 namespace Image.Otp.Core.Extensions;
+
+using FourRows = (Vector256<float>, Vector256<float>, Vector256<float>, Vector256<float>);
+
 public unsafe class AVXIDCTOPT
 {
     private const int BLOCK_SIZE = 64;
+
+    public static void IDCT2D_SIMD_EIGHT_ROWS(Span<float> block)
+    {
+        Span<float> temp = stackalloc float[BLOCK_SIZE];
+
+        var oddResults = ProcessOdd4Point_256(block);
+        var evenResults = ProcessEven4Point_256(block);
+
+        for (int row = 0; row < 4; row++)
+        {
+            Vector256<float> even = GetEvenRow(evenResults, row);
+            Vector256<float> odd = GetOddRow(oddResults, row);
+
+            Vector256<float> resultPos = Avx.Add(even, odd);
+            Vector256<float> resultNeg = Avx.Subtract(even, odd);
+
+            var outputStart = row * 16;
+            StoreVector256(resultPos, temp[outputStart..]);
+            StoreVector256(resultNeg, temp[(outputStart + 8)..]);
+        }
+
+        Span<float> trans = stackalloc float[BLOCK_SIZE];
+        Transpose8x8(temp, trans);
+
+        oddResults = ProcessOdd4Point_256(trans);
+        evenResults = ProcessEven4Point_256(trans);
+
+        for (int row = 0; row < 4; row++)
+        {
+            Vector256<float> even = GetEvenRow(evenResults, row);
+            Vector256<float> odd = GetOddRow(oddResults, row);
+
+            Vector256<float> resultPos = Avx.Add(even, odd);
+            Vector256<float> resultNeg = Avx.Subtract(even, odd);
+
+            var outputStart = row * 16;
+            StoreVector256(resultPos, block[outputStart..]);
+            StoreVector256(resultNeg, block[(outputStart + 8)..]);
+        }
+
+        for (var j = 0; j < BLOCK_SIZE; j++)
+            block[j] *= 0.125f;
+    }
+
+    private static void StoreVector256(Vector256<float> vector, Span<float> destination)
+    {
+        var temp = stackalloc float[8];
+        Avx.Store(temp, vector);
+
+        for (int i = 0; i < 8; i++)
+        {
+            destination[i] = temp[i];
+        }
+    }
+
+    private static void StoreRowToTemp(Span<float> temp, Vector256<float> firstHalf, Vector256<float> secondHalf, int row)
+    {
+        // Extract the 8 float values from the two vectors
+        Span<float> firstHalfData = stackalloc float[8];
+        Span<float> secondHalfData = stackalloc float[8];
+
+        firstHalf.CopyTo(firstHalfData);
+        secondHalf.CopyTo(secondHalfData);
+
+        // Store first 4 points (positions 0-3)
+        for (int i = 0; i < 4; i++)
+            temp[row * 8 + i] = firstHalfData[i];
+
+        // Store last 4 points (positions 4-7)  
+        for (int i = 0; i < 4; i++)
+            temp[row * 8 + i + 4] = secondHalfData[i];
+    }
+
+    private static Vector256<float> GetEvenRow(FourRows evenResults, int row)
+    {
+        return row switch
+        {
+            0 => evenResults.Item1,
+            1 => evenResults.Item2,
+            2 => evenResults.Item3,
+            3 => evenResults.Item4,
+            _ => throw new ArgumentOutOfRangeException(nameof(row))
+        };
+    }
+
+    // Helper method to extract odd row data  
+    private static Vector256<float> GetOddRow(FourRows oddResults, int row)
+    {
+        return row switch
+        {
+            0 => oddResults.Item1,
+            1 => oddResults.Item2,
+            2 => oddResults.Item3,
+            3 => oddResults.Item4,
+            4 => oddResults.Item1,
+            5 => oddResults.Item2,
+            6 => oddResults.Item3,
+            7 => oddResults.Item4,
+            _ => throw new ArgumentOutOfRangeException(nameof(row))
+        };
+    }
+
+    private static FourRows ProcessOdd4Point_256(ReadOnlySpan<float> block)
+    {
+        // Load odd coefficients from different rows
+        Vector256<float> y1 = Vector256.Create(
+            block[1], block[9], block[17], block[25],
+            block[33], block[41], block[49], block[57]);
+
+        Vector256<float> y3 = Vector256.Create(
+            block[3], block[11], block[19], block[27],
+            block[35], block[43], block[51], block[59]);
+
+        Vector256<float> y5 = Vector256.Create(
+            block[5], block[13], block[21], block[29],
+            block[37], block[45], block[53], block[61]);
+
+        Vector256<float> y7 = Vector256.Create(
+            block[7], block[15], block[23], block[31],
+            block[39], block[47], block[55], block[63]);
+
+        // Precomputed constants (float precision)
+        Vector256<float> r1 = Vector256.Create(1.387040f);
+        Vector256<float> r3 = Vector256.Create(1.175876f);
+        Vector256<float> r5 = Vector256.Create(0.785695f);
+        Vector256<float> r7 = Vector256.Create(0.275899f);
+
+        // Compute intermediate values (same butterfly pattern as scalar)
+        Vector256<float> z0 = Avx.Add(y1, y7);
+        Vector256<float> z1 = Avx.Add(y3, y5);
+        Vector256<float> z2 = Avx.Add(y3, y7);
+        Vector256<float> z3 = Avx.Add(y1, y5);
+        Vector256<float> z4 = Avx.Multiply(Avx.Add(z0, z1), r3);
+
+        // Negative constants
+        Vector256<float> negativeZero = Vector256.Create(-0.0f);
+        Vector256<float> neg_r1 = Avx.Xor(r1, negativeZero);
+        Vector256<float> neg_r3 = Avx.Xor(r3, negativeZero);
+        Vector256<float> neg_r5 = Avx.Xor(r5, negativeZero);
+        Vector256<float> neg_r7 = Avx.Xor(r7, negativeZero);
+
+        Vector256<float> z0_scaled = Avx.Multiply(z0, Avx.Add(neg_r3, r7));
+        Vector256<float> z1_scaled = Avx.Multiply(z1, Avx.Add(neg_r3, neg_r1));
+        Vector256<float> z2_scaled = Avx.Add(Avx.Multiply(z2, Avx.Add(neg_r3, neg_r5)), z4);
+        Vector256<float> z3_scaled = Avx.Add(Avx.Multiply(z3, Avx.Add(neg_r3, r5)), z4);
+
+        Vector256<float> b3 = Avx.Add(Avx.Add(
+            Avx.Multiply(y7, Avx.Add(Avx.Add(neg_r1, r3), Avx.Add(r5, neg_r7))),
+            z0_scaled), z2_scaled);
+
+        Vector256<float> b2 = Avx.Add(Avx.Add(
+            Avx.Multiply(y5, Avx.Add(Avx.Add(r1, r3), Avx.Add(neg_r5, r7))),
+            z1_scaled), z3_scaled);
+
+        Vector256<float> b1 = Avx.Add(Avx.Add(
+            Avx.Multiply(y3, Avx.Add(Avx.Add(r1, r3), Avx.Add(r5, neg_r7))),
+            z1_scaled), z2_scaled);
+
+        Vector256<float> b0 = Avx.Add(Avx.Add(
+            Avx.Multiply(y1, Avx.Add(Avx.Add(r1, r3), Avx.Add(neg_r5, neg_r7))),
+            z0_scaled), z3_scaled);
+
+        var tmp0 = Avx.Shuffle(b0, b1, 0x44);
+        var tmp1 = Avx.Shuffle(b0, b1, 0xEE);
+        var tmp2 = Avx.Shuffle(b2, b3, 0x44);
+        var tmp3 = Avx.Shuffle(b2, b3, 0xEE);
+
+        return (
+            Avx.Shuffle(tmp0, tmp2, 0x88),
+            Avx.Shuffle(tmp0, tmp2, 0xDD),
+            Avx.Shuffle(tmp1, tmp3, 0x88),
+            Avx.Shuffle(tmp1, tmp3, 0xDD) 
+        );
+    }
+
+    private static FourRows ProcessEven4Point_256(ReadOnlySpan<float> y)
+    {
+        // Load even coefficients from different rows
+        Vector256<float> y0 = Vector256.Create(
+            y[0],
+            y[8],
+            y[16],
+            y[24],            
+            y[32],
+            y[40],
+            y[48],
+            y[56]);  // [y0_row0, y0_row1, y0_row2, y0_row3]
+
+        Vector256<float> y2 = Vector256.Create(
+            y[2],
+            y[10],
+            y[18],
+            y[26],
+            y[34],
+            y[42],
+            y[50],
+            y[58]); // [y2_row0, y2_row1, y2_row2, y2_row3]
+
+        Vector256<float> y4 = Vector256.Create(
+            y[4],
+            y[12],
+            y[20],
+            y[28],            
+            y[36],
+            y[44],
+            y[52],
+            y[60]); // [y4_row0, y4_row1, y4_row2, y4_row3]
+
+        Vector256<float> y6 = Vector256.Create(
+            y[6],
+            y[14],
+            y[22],
+            y[30],
+            y[38],
+            y[46],
+            y[54],
+            y[62]); // [y6_row0, y6_row1, y6_row2, y6_row3]
+
+        // Constants for even part (float precision)
+        Vector256<float> r2 = Vector256.Create(1.306563f);
+        Vector256<float> r6 = Vector256.Create(0.541196f);
+
+        // Precomputed combinations
+        Vector256<float> r2_plus_r6 = Vector256.Create(1.847759f); // r[2] + r[6]
+        Vector256<float> r2_minus_r6 = Vector256.Create(0.765367f); // r[2] - r[6]
+
+        // Compute z4 = (y2 + y6) * r6
+        Vector256<float> z4 = Avx.Multiply(Avx.Add(y2, y6), r6);
+
+        // Compute z0 = y0 + y4, z1 = y0 - y4
+        Vector256<float> z0 = Avx.Add(y0, y4);
+        Vector256<float> z1 = Avx.Subtract(y0, y4);
+
+        // Compute z2 = z4 - y6 * (r2 + r6)
+        Vector256<float> z2 = Avx.Subtract(z4, Avx.Multiply(y6, r2_plus_r6));
+
+        // Compute z3 = z4 + y2 * (r2 - r6)
+        Vector256<float> z3 = Avx.Add(z4, Avx.Multiply(y2, r2_minus_r6));
+
+        // Final even results: [a0, a1, a2, a3] for each row
+        Vector256<float> a0 = Avx.Add(z0, z3);
+        Vector256<float> a3 = Avx.Subtract(z0, z3);
+        Vector256<float> a1 = Avx.Add(z1, z2);
+        Vector256<float> a2 = Avx.Subtract(z1, z2);
+
+        // Transpose to get row-wise results
+        var tmp0 = Avx.Shuffle(a0, a1, 0x44); // [a0_row0, a0_row1, a1_row0, a1_row1]
+        var tmp1 = Avx.Shuffle(a0, a1, 0xEE); // [a0_row2, a0_row3, a1_row2, a1_row3]
+        var tmp2 = Avx.Shuffle(a2, a3, 0x44); // [a2_row0, a2_row1, a3_row0, a3_row1]
+        var tmp3 = Avx.Shuffle(a2, a3, 0xEE); // [a2_row2, a2_row3, a3_row2, a3_row3]
+
+        return
+        (
+            Avx.Shuffle(tmp0, tmp2, 0x88), // [a0_row0, a1_row0, a2_row0, a3_row0] - Row 0
+            Avx.Shuffle(tmp0, tmp2, 0xDD), // [a0_row1, a1_row1, a2_row1, a3_row1] - Row 1
+            Avx.Shuffle(tmp1, tmp3, 0x88), // [a0_row2, a1_row2, a2_row2, a3_row2] - Row 2
+            Avx.Shuffle(tmp1, tmp3, 0xDD)  // [a0_row3, a1_row3, a2_row3, a3_row3] - Row 3
+        );
+    }
 
     public static void IDCT2D_SIMD_FOUR_ROWS(Span<float> block)
     {
@@ -39,25 +301,6 @@ public unsafe class AVXIDCTOPT
             resultPos.CopyTo(block[outputStart..]);
             resultNeg.CopyTo(block[(outputStart + 4)..]);
         }
-
-        for (var j = 0; j < BLOCK_SIZE; j++)
-            block[j] *= 0.125f;
-    }
-
-    public static void IDCT2D_SIMD_SSE(Span<float> block)
-    {
-        Span<float> temp = stackalloc float[BLOCK_SIZE];
-
-        for (var y = 0; y < 8; y++)
-            IDCT1Dllm_32f_SIMD_Sse(block.Slice(y * 8, 8), temp.Slice(y * 8, 8));
-
-        Span<float> trans = stackalloc float[BLOCK_SIZE];
-        Transpose8x8(temp, trans);
-
-        for (var j = 0; j < 8; j++)
-            IDCT1Dllm_32f_SIMD_Sse(trans.Slice(j * 8, 8), temp.Slice(j * 8, 8));
-
-        Transpose8x8(temp, block);
 
         for (var j = 0; j < BLOCK_SIZE; j++)
             block[j] *= 0.125f;
@@ -200,6 +443,25 @@ public unsafe class AVXIDCTOPT
         ];
     }
 
+    public static void IDCT2D_SIMD_SSE(Span<float> block)
+    {
+        Span<float> temp = stackalloc float[BLOCK_SIZE];
+
+        for (var y = 0; y < 8; y++)
+            IDCT1Dllm_32f_SIMD_Sse(block.Slice(y * 8, 8), temp.Slice(y * 8, 8));
+
+        Span<float> trans = stackalloc float[BLOCK_SIZE];
+        Transpose8x8(temp, trans);
+
+        for (var j = 0; j < 8; j++)
+            IDCT1Dllm_32f_SIMD_Sse(trans.Slice(j * 8, 8), temp.Slice(j * 8, 8));
+
+        Transpose8x8(temp, block);
+
+        for (var j = 0; j < BLOCK_SIZE; j++)
+            block[j] *= 0.125f;
+    }
+
     public static void IDCT1Dllm_32f_SIMD_Sse(ReadOnlySpan<float> y, Span<float> x)
     {
         // Load all 8 coefficients as two 128-bit vectors
@@ -323,8 +585,6 @@ public unsafe class AVXIDCTOPT
         Vector128<float> a23 = Sse.UnpackLow(a2, a3);   // [a2, a3, a2, a3]
         return Sse.Shuffle(a01, a23, 0x44);             // [a0, a1, a2, a3]
     }
-
-
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Transpose8x8<T>(Span<T> src, Span<T> dst)

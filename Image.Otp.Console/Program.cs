@@ -7,7 +7,7 @@ using Image.Otp.Core.Formats;
 using Image.Otp.Core.Loaders;
 using Image.Otp.Core.Primitives;
 
-new IDCTBenchmark().Compute_BlockF_Avx();
+//new IDCTBenchmark().Compute_BlockF_Sse();
 
 BenchmarkRunner.Run<IDCTBenchmark>();
 return;

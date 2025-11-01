@@ -38,7 +38,7 @@ public static class JPEG_IDCT
                 dst[j * 8 + i] = src[i * 8 + j];
     }
 
-    public static void IDCT1Dllm_64f(Span<double> y, int yOffset, Span<double> x, int xOffset)
+    public static void IDCT1Dllm_64f(ReadOnlySpan<double> y, int yOffset, Span<double> x, int xOffset)
     {
         double a0, a1, a2, a3, b0, b1, b2, b3;
         double z0, z1, z2, z3, z4;

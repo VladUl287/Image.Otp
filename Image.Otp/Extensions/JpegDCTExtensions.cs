@@ -19,17 +19,31 @@ public static class JpegDCTExtensions
         if (Avx.IsSupported)
         {
             var result = block.ToArray().Select(c => float.Parse(c.ToString())).ToArray().AsSpan();
-            IDCT8x8_AVX2(result);
-            return result.ToArray().Select(c => double.Parse(c.ToString())).ToArray().AsSpan();
+            AVXIDCTOPT.IDCT2D_llm_SIMD(result);
         }
 
         JPEG_IDCT.IDCT2D_llm_In_Place(block);
         return block;
     }
 
-    public unsafe static void IDCT8x8_AVX2(Span<float> block)
+    public static float[,] TwoDimensional(float[] values)
     {
-        AVXIDCT.TransformBlockAVX(block);
+        var oneDArray = new float[64];
+
+        for (var i = 0; i < 64; i++)
+        {
+            oneDArray[i] = i;
+        }
+
+        var twoDArray = new float[8, 8];
+        for (int row = 0; row < 8; row++)
+        {
+            for (int col = 0; col < 8; col++)
+            {
+                twoDArray[row, col] = oneDArray[row * 8 + col];
+            }
+        }
+        return twoDArray;
     }
 
     public static double[] Idct8x8ScalarInPlace(this double[] block)

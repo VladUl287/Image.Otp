@@ -7,7 +7,7 @@ using Image.Otp.Core.Formats;
 using Image.Otp.Core.Loaders;
 using Image.Otp.Core.Primitives;
 
-BenchmarkRunner.Run<JpegLoadBenchmark>();
+BenchmarkRunner.Run<IDCT1DBenchmark>();
 return;
 
 var formatResovler = new BaseFormatResolver();

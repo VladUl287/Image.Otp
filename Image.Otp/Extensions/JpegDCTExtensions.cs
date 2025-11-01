@@ -19,7 +19,7 @@ public static class JpegDCTExtensions
         if (Avx.IsSupported)
         {
             var result = block.ToArray().Select(c => float.Parse(c.ToString())).ToArray().AsSpan();
-            AVXIDCTOPT.IDCT2D_llm_SIMD(result);
+            AVXIDCTOPT.IDCT2D_SIMD_G(result);
         }
 
         JPEG_IDCT.IDCT2D_llm_In_Place(block);

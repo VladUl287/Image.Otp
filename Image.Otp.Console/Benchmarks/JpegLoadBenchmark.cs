@@ -56,15 +56,15 @@ public class JpegLoadBenchmark
     //    return size;
     //}
 
-    [Benchmark]
-    public int LoadJpegImageSharpStream()
-    {
-        using var stream = new FileStream(JpegBaseLine, FileMode.Open);
-        using var image = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgb24>(stream);
-        var size = image.Width * image.Height;
-        image.Dispose();
-        return size;
-    }
+    //[Benchmark]
+    //public int LoadJpegImageSharpStream()
+    //{
+    //    using var stream = new FileStream(JpegBaseLine, FileMode.Open);
+    //    using var image = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgb24>(stream);
+    //    var size = image.Width * image.Height;
+    //    image.Dispose();
+    //    return size;
+    //}
 
     private readonly static JpegLoader jpegLoader = new();
 

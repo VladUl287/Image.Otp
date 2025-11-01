@@ -7,7 +7,9 @@ using Image.Otp.Core.Formats;
 using Image.Otp.Core.Loaders;
 using Image.Otp.Core.Primitives;
 
-BenchmarkRunner.Run<IDCT1DBenchmark>();
+new IDCTBenchmark().Compute_BlockF_Avx();
+
+BenchmarkRunner.Run<IDCTBenchmark>();
 return;
 
 var formatResovler = new BaseFormatResolver();

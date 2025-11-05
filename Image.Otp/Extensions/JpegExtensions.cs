@@ -348,7 +348,7 @@ public static class JpegExtensions
                             block = block
                                 .DequantizeInPlace(qTable)
                                 .ZigZagToNaturalInPlace()
-                                .Idct8x8InPlace()
+                                .IDCT8x8InPlace()
                                 ;
 
                             const int BLOCK_SIZE = 8;

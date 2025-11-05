@@ -1,32 +1,29 @@
 ﻿using Image.Otp.Core.Helpers.Jpg;
+using System.Runtime.Intrinsics.X86;
 
 namespace Image.Otp.Core.Extensions;
 
 public static class JpegDCTExtensions
 {
-    public static double[] Idct8x8InPlace(this double[] block)
+    public static double[] IDCT8x8InPlace(this double[] block)
     {
         ArgumentNullException.ThrowIfNull(block, nameof(block));
-        Idct8x8InPlace(block.AsSpan());
+        IDCT8x8InPlace(block.AsSpan());
         return block;
     }
 
-    public static Span<double> Idct8x8InPlace(this Span<double> block)
+    public static Span<double> IDCT8x8InPlace(this Span<double> block)
     {
-        JPEG_IDCT.IDCT2D_llm_In_Place(block);
+        IDCT.IDCT2D_LLM(block);
         return block;
     }
 
-    public static double[] Idct8x8ScalarInPlace(this double[] block)
+    public static Span<float> IDCT8x8InPlace(this Span<float> block)
     {
-        ArgumentNullException.ThrowIfNull(block, nameof(block));
-        Idct8x8ScalarInPlace(block.AsSpan());
-        return block;
-    }
-
-    public static Span<double> Idct8x8ScalarInPlace(this Span<double> block)
-    {
-        JPEG_IDCT.IDCT2D_Scalar_In_Place(block);
+        if (Avx.IsSupported)
+            IDCT_AVX.IDCT2D_AVX(block);
+        else
+            IDCT.IDCT2D_LLM(block);
         return block;
     }
 }

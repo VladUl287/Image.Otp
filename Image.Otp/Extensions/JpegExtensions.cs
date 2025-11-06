@@ -379,67 +379,67 @@ public static class JpegExtensions
         ArrayPool<byte>.Shared.Return(yBuffer, true);
         if (cbBuffer is not null) ArrayPool<byte>.Shared.Return(cbBuffer, true);
         if (crBuffer is not null) ArrayPool<byte>.Shared.Return(crBuffer, true);
+    }
 
-        static int GetDc(Dictionary<byte, int> dcPredictor, StreamBitReader bitReader, ScanComponent sc, CanonicalHuffmanTable dcTable)
+    static int GetDc(Dictionary<byte, int> dcPredictor, StreamBitReader bitReader, ScanComponent sc, CanonicalHuffmanTable dcTable)
+    {
+        var sym = JpegHelpres.DecodeHuffmanSymbol(bitReader, dcTable);
+        if (sym < 0)
+            throw new EndOfStreamException("Marker or EOF encountered while decoding DC.");
+
+        var magnitude = sym; // number of additional bits
+        var dcDiff = 0;
+
+        if (magnitude > 0)
         {
-            var sym = JpegHelpres.DecodeHuffmanSymbol(bitReader, dcTable);
-            if (sym < 0)
-                throw new EndOfStreamException("Marker or EOF encountered while decoding DC.");
+            var bits = bitReader.ReadBits(magnitude, false);
+            if (bits < 0)
+                throw new EndOfStreamException("EOF/marker while reading DC bits.");
 
-            var magnitude = sym; // number of additional bits
-            var dcDiff = 0;
-
-            if (magnitude > 0)
-            {
-                var bits = bitReader.ReadBits(magnitude, false);
-                if (bits < 0)
-                    throw new EndOfStreamException("EOF/marker while reading DC bits.");
-
-                dcDiff = JpegBlockProcessor.ExtendSign(bits, magnitude);
-            }
-
-            var prevDc = dcPredictor[sc.ComponentId];
-            var dcVal = prevDc + dcDiff;
-            dcPredictor[sc.ComponentId] = dcVal;
-
-            return dcVal;
+            dcDiff = JpegBlockProcessor.ExtendSign(bits, magnitude);
         }
 
-        static void SetAc(StreamBitReader bitReader, CanonicalHuffmanTable acTable, Span<float> block)
+        var prevDc = dcPredictor[sc.ComponentId];
+        var dcVal = prevDc + dcDiff;
+        dcPredictor[sc.ComponentId] = dcVal;
+
+        return dcVal;
+    }
+
+    static void SetAc(StreamBitReader bitReader, CanonicalHuffmanTable acTable, Span<float> block)
+    {
+        int k = 1;
+        while (k < 64)
         {
-            int k = 1;
-            while (k < 64)
+            int acSym = JpegHelpres.DecodeHuffmanSymbol(bitReader, acTable);
+            if (acSym < 0)
+                throw new EndOfStreamException("Marker or EOF encountered while decoding AC.");
+
+            if (acSym == 0x00)
+                break;
+
+            if (acSym == 0xF0)
             {
-                int acSym = JpegHelpres.DecodeHuffmanSymbol(bitReader, acTable);
-                if (acSym < 0)
-                    throw new EndOfStreamException("Marker or EOF encountered while decoding AC.");
-
-                if (acSym == 0x00)
-                    break;
-
-                if (acSym == 0xF0)
-                {
-                    k += 16;
-                    continue;
-                }
-
-                int run = (acSym >> 4) & 0x0F;
-                int size = acSym & 0x0F;
-                k += run;
-                if (k >= 64)
-                    throw new InvalidDataException("Run exceeds block size while decoding AC.");
-
-                int bits = 0;
-                if (size > 0)
-                {
-                    bits = bitReader.ReadBits(size, false);
-                    if (bits < 0) throw new EndOfStreamException("EOF/marker while reading AC bits.");
-                }
-
-                var level = JpegBlockProcessor.ExtendSign(bits, size);
-                block[k] = level;
-                k++;
+                k += 16;
+                continue;
             }
+
+            int run = (acSym >> 4) & 0x0F;
+            int size = acSym & 0x0F;
+            k += run;
+            if (k >= 64)
+                throw new InvalidDataException("Run exceeds block size while decoding AC.");
+
+            int bits = 0;
+            if (size > 0)
+            {
+                bits = bitReader.ReadBits(size, false);
+                if (bits < 0) throw new EndOfStreamException("EOF/marker while reading AC bits.");
+            }
+
+            var level = JpegBlockProcessor.ExtendSign(bits, size);
+            block[k] = level;
+            k++;
         }
     }
 }

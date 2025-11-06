@@ -7,8 +7,12 @@ using Image.Otp.Core.Formats;
 using Image.Otp.Core.Loaders;
 using Image.Otp.Core.Primitives;
 
-BenchmarkRunner.Run<IDCTBenchmark>();
-return;
+if (IsReleaseBuild())
+{
+    BenchmarkRunner.Run<JpegLoadBenchmark>();
+    //BenchmarkRunner.Run<IDCTBenchmark>();
+    return;
+}
 
 var formatResovler = new BaseFormatResolver();
 var loaders = new IImageLoader[] { new JpegLoader(), new BmpLoader() };
@@ -25,3 +29,12 @@ image.Dispose();
 //var image = ImageExtensions.LoadJpeg<Rgba32>(bytes);
 //image.SaveAsBmp(outputPath);
 //image.Dispose();
+
+static bool IsReleaseBuild()
+{
+#if DEBUG
+    return false;
+#else
+        return true;
+#endif
+}

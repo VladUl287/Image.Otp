@@ -17,7 +17,7 @@ public static class JpegExtensions
 
         public SOSSegment ScanInfo { get; set; } = default!;
 
-        public Dictionary<byte, double[]> QuantTables { get; init; } = [];
+        public Dictionary<byte, float[]> QuantTables { get; init; } = [];
 
         public Dictionary<(byte Class, byte Id), CanonicalHuffmanTable> CanonicalHuffmanTables { get; init; } = [];
 
@@ -30,7 +30,7 @@ public static class JpegExtensions
 
         var accumulator = new Accumulator();
 
-        DefaultArrayPool<double> doublePool = default;
+        DefaultArrayPool<float> pool = default;
 
         while (stream.Position < stream.Length)
         {
@@ -53,7 +53,7 @@ public static class JpegExtensions
                     switch (marker)
                     {
                         case JpegMarkers.DQT:
-                            ProcessDQT(stream, stream.Position + length, accumulator.QuantTables, doublePool);
+                            ProcessDQT(stream, stream.Position + length, accumulator.QuantTables, pool);
                             break;
                         case JpegMarkers.SOF0:
                         case JpegMarkers.SOF2:
@@ -78,13 +78,13 @@ public static class JpegExtensions
         }
 
         foreach (var qTable in accumulator.QuantTables.Values)
-            doublePool.Return(qTable);
+            pool.Return(qTable);
 
         return image;
     }
 
-    private static void ProcessDQT<TAllocator>(Stream stream, long endPosition, Dictionary<byte, double[]> qTables, TAllocator allocator)
-        where TAllocator : notnull, IArrayPool<double>
+    private static void ProcessDQT<TAllocator>(Stream stream, long endPosition, Dictionary<byte, float[]> qTables, TAllocator allocator)
+        where TAllocator : notnull, IArrayPool<float>
     {
         const int BLOCK_SIZE = 64;
         const int MAX_BUFFER_SIZE = 128;
@@ -317,7 +317,7 @@ public static class JpegExtensions
         var width = frameInfo.Width;
         var height = frameInfo.Height;
 
-        Span<double> block = stackalloc double[64];
+        Span<float> block = stackalloc float[64];
         for (var my = 0; my < mcuRows; my++)
         {
             for (var mx = 0; mx < mcuCols; mx++)
@@ -344,18 +344,17 @@ public static class JpegExtensions
                         {
                             block[0] = GetDc(dcPredictor, bitReader, sc, dcTable);
                             SetAc(bitReader, acTable, block);
-
-                            block = block
-                                .DequantizeInPlace(qTable)
-                                .ZigZagToNaturalInPlace()
-                                .IDCT8x8InPlace()
-                                ;
-
+                            
                             const int BLOCK_SIZE = 8;
                             var blockStartX = mx * maxH * BLOCK_SIZE + bx * BLOCK_SIZE * scaleX;
                             var blockStartY = my * maxV * BLOCK_SIZE + by * BLOCK_SIZE * scaleY;
 
-                            buffer.UpsampleInPlace(block, width, height, scaleX, scaleY, blockStartX, blockStartY);
+                            block
+                                .DequantizeInPlace(qTable)
+                                .ZigZagToNaturalInPlace()
+                                .IDCT8x8InPlace()
+                                .UpsampleInPlace(buffer, width, height, scaleX, scaleY, blockStartX, blockStartY)
+                                ;
                         }
                     }
 
@@ -406,7 +405,7 @@ public static class JpegExtensions
             return dcVal;
         }
 
-        static void SetAc(StreamBitReader bitReader, CanonicalHuffmanTable acTable, Span<double> block)
+        static void SetAc(StreamBitReader bitReader, CanonicalHuffmanTable acTable, Span<float> block)
         {
             int k = 1;
             while (k < 64)

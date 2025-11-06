@@ -37,25 +37,29 @@ public static class Dequantization
         return coeffs;
     }
 
-    public static Span<double> DequantizeInPlace(this Span<double> coeffs, double[] qTable)
+    public static Span<T> DequantizeInPlace<T>(this Span<T> coeffs, T[] qTable) where T : INumber<T>
     {
         ArgumentNullException.ThrowIfNull(qTable, nameof(qTable));
 
         if (coeffs.Length != BLOCK_SIZE || qTable.Length != BLOCK_SIZE)
             throw new ArgumentException("Arrays must have 64 elements");
 
-        var vectorSize = Vector<double>.Count;
         var i = 0;
 
-        while (i <= BLOCK_SIZE - vectorSize)
+        if (Vector<T>.IsSupported)
         {
-            var vCoeffs = new Vector<double>(coeffs[i..]);
-            var vQTable = new Vector<double>(qTable, i);
+            var vectorSize = Vector<T>.Count;
 
-            var result = vCoeffs * vQTable;
-            result.CopyTo(coeffs[i..]);
+            while (i <= BLOCK_SIZE - vectorSize)
+            {
+                var vCoeffs = new Vector<T>(coeffs[i..]);
+                var vQTable = new Vector<T>(qTable, i);
 
-            i += vectorSize;
+                var result = vCoeffs * vQTable;
+                result.CopyTo(coeffs[i..]);
+
+                i += vectorSize;
+            }
         }
 
         while (i < BLOCK_SIZE)

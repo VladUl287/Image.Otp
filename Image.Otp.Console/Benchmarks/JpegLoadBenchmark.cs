@@ -56,7 +56,7 @@ public class JpegLoadBenchmark
     //    return size;
     //}
 
-    [Benchmark]
+    //[Benchmark]
     public int LoadJpegImageSharpStream()
     {
         using var stream = new FileStream(JpegBaseLine, FileMode.Open);

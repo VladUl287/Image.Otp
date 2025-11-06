@@ -26,7 +26,7 @@ public static class JpegBlockProcessor
 
     public static ushort[] ZigZagToNatural(ushort[] block) => ZigZagToNatural(block);
 
-    public unsafe static Span<double> ZigZagToNaturalInPlace(this Span<double> block)
+    public unsafe static Span<T> ZigZagToNaturalInPlace<T>(this Span<T> block) where T : unmanaged
     {
         if (block.Length != BLOCK_SIZE)
             throw new ArgumentException("Array must have exactly 64 elements");
@@ -42,10 +42,10 @@ public static class JpegBlockProcessor
             35, 36, 48, 49, 57, 58, 62, 63
         ];
 
-        Span<double> temp = stackalloc double[BLOCK_SIZE];
-        fixed (double* src = block, dst = temp)
+        Span<T> temp = stackalloc T[BLOCK_SIZE];
+        fixed (T* src = block, dst = temp)
         {
-            for (int i = 0; i < BLOCK_SIZE; i++)
+            for (var i = 0; i < BLOCK_SIZE; i++)
                 dst[i] = src[zigzag[i]];
         }
 

@@ -24,7 +24,7 @@ public static class JpegBlockProcessor
         return natural;
     }
 
-    public static ushort[] ZigZagToNatural(ushort[] block) => ZigZagToNatural(block);
+    public static ushort[] ZigZagToNatural(ushort[] block) => ZigZagToNaturalInPlace<ushort>(block.AsSpan()).ToArray();
 
     public unsafe static Span<T> ZigZagToNaturalInPlace<T>(this Span<T> block) where T : unmanaged
     {

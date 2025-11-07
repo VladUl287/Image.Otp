@@ -11,5 +11,5 @@ public unsafe interface IPixelProcessor<T> where T : unmanaged, IPixel<T>
 
     T FromYCbCr(byte y, byte cb, byte cr);
 
-    void FromYCbCr(byte* y, byte* cb, byte* cr, Span<T> output) { }
+    void FromYCbCr(byte* y, byte* cb, byte* cr, Span<T> output);
 }

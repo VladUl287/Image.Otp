@@ -25,6 +25,12 @@ public unsafe class Rgba32Processor : IPixelProcessor<Rgba32>
         return new Rgba32((byte)r, (byte)g, (byte)b);
     }
 
+    public unsafe void FromYCbCr(byte* y, byte* cb, byte* cr, Span<Rgba32> output)
+    {
+        for (var i = 0; i < output.Length; i++)
+            output[i] = FromYCbCr(y[i], cb[i], cr[i]);
+    }
+
     public void ProcessPixel(byte* srcPtr, int srcPos, Rgba32* dstPtr, int dstPos, int bytesPerPixel)
     {
         byte r = srcPtr[srcPos + 0];

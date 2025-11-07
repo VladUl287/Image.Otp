@@ -344,7 +344,7 @@ public static class JpegExtensions
                         {
                             block[0] = GetDc(dcPredictor, bitReader, sc, dcTable);
                             SetAc(bitReader, acTable, block);
-                            
+
                             const int BLOCK_SIZE = 8;
                             var blockStartX = mx * maxH * BLOCK_SIZE + bx * BLOCK_SIZE * scaleX;
                             var blockStartY = my * maxV * BLOCK_SIZE + by * BLOCK_SIZE * scaleY;
@@ -353,12 +353,12 @@ public static class JpegExtensions
                                 .DequantizeInPlace(qTable)
                                 .ZigZagToNaturalInPlace()
                                 .IDCT8x8InPlace()
-                                .UpsampleInPlace(buffer, width, height, scaleX, scaleY, blockStartX, blockStartY)
-                                ;
+                                .UpsampleInPlace(buffer, width, height, scaleX, scaleY, blockStartX, blockStartY);
+
+                            block.Clear();
                         }
                     }
 
-                    block.Clear();
                 }
             }
         }

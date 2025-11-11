@@ -63,7 +63,56 @@ public unsafe class Rgb24Processor : IPixelProcessor<Rgb24>
 
     public void FromYCbCr(float* y, float* cb, float* cr, Span<Rgb24> output)
     {
-        for (var i = 0; i < output.Length; i++)
+        var i = 0;
+
+        if (Avx.IsSupported)
+        {
+            var c128 = Vector256.Create(128f);
+
+            var maxColor = Vector256.Create(255f);
+            var zero = Vector256.Create(0f);
+
+            var f1_402 = Vector256.Create(1.402f);
+            var f0_344 = Vector256.Create(-0.344136f);
+            var f0_714 = Vector256.Create(-0.714136f);
+            var f1_772 = Vector256.Create(1.772f);
+
+            var size = Vector256<float>.Count;
+
+            for (; i < output.Length - size; i += size)
+            {
+                var yVec = Vector256.Load(y + i);
+                var cbVec = Vector256.Load(cb + i);
+                var crVec = Vector256.Load(cr + i);
+
+                yVec = ClampToByte(yVec);
+                cbVec = ClampToByte(cbVec);
+                crVec = ClampToByte(crVec);
+
+                cbVec = Avx.Subtract(cbVec, c128);
+                crVec = Avx.Subtract(crVec, c128);
+
+                var rFloat = Avx.Add(yVec, Avx.Multiply(crVec, f1_402));
+                var bFloat = Avx.Add(yVec, Avx.Multiply(cbVec, f1_772));
+                var gFloat = Avx.Add(yVec, Avx.Add(
+                    Avx.Multiply(cbVec, f0_344),
+                    Avx.Multiply(crVec, f0_714)));
+
+                rFloat = Avx.Min(Avx.Max(rFloat, zero), maxColor);
+                gFloat = Avx.Min(Avx.Max(gFloat, zero), maxColor);
+                bFloat = Avx.Min(Avx.Max(bFloat, zero), maxColor);
+
+                for (int j = 0; j < size; j++)
+                {
+                    var r = (byte)rFloat.GetElement(j);
+                    var g = (byte)gFloat.GetElement(j);
+                    var b = (byte)bFloat.GetElement(j);
+                    output[j + i] = new Rgb24(r, g, b);
+                }
+            }
+        }
+
+        for (; i < output.Length; i++)
             output[i] = FromYCbCr(ClampToByte(y[i]), ClampToByte(cb[i]), ClampToByte(cr[i]));
     }
 
@@ -72,6 +121,15 @@ public unsafe class Rgb24Processor : IPixelProcessor<Rgb24>
     {
         var value = sample + 128.0f;
         return (byte)Math.Max(0f, Math.Min(value, 255f));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector256<float> ClampToByte(Vector256<float> sample)
+    {
+        var value = Avx.Add(sample, Vector256.Create(128.0f));
+        var zero = Vector256<float>.Zero;
+        var max = Vector256.Create(255.0f);
+        return Avx.Max(Avx.Min(value, max), zero);
     }
 
     public void FromYCbCr(byte* y, byte* cb, byte* cr, Span<Rgb24> output)

@@ -19,6 +19,7 @@ public static class Upsampling
             if (colsToCopy <= 0) return;
 
             CopyTo1x1Scale(block, output[dstStart..], colsToCopy, width);
+            return;
         }
 
         var endY = Math.Min(blockStartY + BLOCK_SIZE * scaleY, height);

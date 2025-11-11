@@ -61,6 +61,19 @@ public unsafe class Rgb24Processor : IPixelProcessor<Rgb24>
         return new Rgb24((byte)r, (byte)g, (byte)b);
     }
 
+    public void FromYCbCr(float* y, float* cb, float* cr, Span<Rgb24> output)
+    {
+        for (var i = 0; i < output.Length; i++)
+            output[i] = FromYCbCr(ClampToByte(y[i]), ClampToByte(cb[i]), ClampToByte(cr[i]));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte ClampToByte(float sample)
+    {
+        var value = sample + 128.0f;
+        return (byte)Math.Max(0f, Math.Min(value, 255f));
+    }
+
     public void FromYCbCr(byte* y, byte* cb, byte* cr, Span<Rgb24> output)
     {
         if (!Avx.IsSupported)

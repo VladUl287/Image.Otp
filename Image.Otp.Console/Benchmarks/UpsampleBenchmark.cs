@@ -26,28 +26,4 @@ public class UpsampleBenchmark
         for (var i = 0; i < _blockData.Length; i++)
             _blockData[i] = (float)(random.NextDouble() * 255.0);
     }
-
-    [Benchmark]
-    public void Upsample_8x8_Scale2x()
-    {
-        _blockData.AsSpan().UpsampleInPlace(_outputBuffer, 8, 8, 2, 2, 0, 0);
-    }
-
-    //[Benchmark]
-    public void Upsample_8x8_Scale4x()
-    {
-        _blockData.AsSpan().UpsampleInPlace(_outputBuffer, 8, 8, 4, 4, 0, 0);
-    }
-
-    //[Benchmark]
-    public void Upsample_16x16_Scale2x()
-    {
-        _blockData.AsSpan().UpsampleInPlace(_outputBuffer, 16, 16, 2, 2, 0, 0);
-    }
-
-    //[Benchmark]
-    public void Upsample_16x16_Scale4x()
-    {
-        _blockData.AsSpan().UpsampleInPlace(_outputBuffer, 16, 16, 4, 4, 0, 0);
-    }
 }

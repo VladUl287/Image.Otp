@@ -6,6 +6,7 @@ using System.Buffers;
 using Image.Otp.Abstractions;
 using System.Collections.Frozen;
 using Image.Otp.Core.Helpers.Jpg;
+using System.Runtime.InteropServices;
 
 namespace Image.Otp.Core.Extensions;
 
@@ -302,11 +303,12 @@ public static class JpegExtensions
         foreach (var sc in sosComponents)
             dcPredictor[sc.ComponentId] = 0;
 
-        var componentBuffers = new Dictionary<byte, byte[]>(frameInfo.Components.Length);
+        var pool = ArrayPool<float>.Shared;
+        var componentBuffers = new Dictionary<byte, float[]>(frameInfo.Components.Length);
         foreach (var comp in frameInfo.Components)
         {
-            componentBuffers[comp.Id] = ArrayPool<byte>.Shared.Rent(frameInfo.Width * frameInfo.Height);
-            componentBuffers[comp.Id].AsSpan().Fill(128);
+            componentBuffers[comp.Id] = pool.Rent(frameInfo.Width * frameInfo.Height);
+            componentBuffers[comp.Id].AsSpan().Fill(128f);
         }
 
         var huff = acc.CanonicalHuffmanTables;
@@ -328,8 +330,6 @@ public static class JpegExtensions
                     var qTable = qTables[comp.QuantizationTableId]
                         ?? throw new InvalidOperationException($"Quantization table {comp.QuantizationTableId} not found.");
 
-                    var buffer = componentBuffers[comp.Id];
-
                     var dcTable = huff[(0, sc.DcHuffmanTableId)];
                     var acTable = huff[(1, sc.AcHuffmanTableId)];
 
@@ -338,6 +338,8 @@ public static class JpegExtensions
                     var scaleX = maxH / h;
                     var scaleY = maxV / v;
 
+                    var buffer = componentBuffers[comp.Id].AsSpan();
+
                     for (int by = 0; by < v; by++)
                     {
                         for (int bx = 0; bx < h; bx++)
@@ -345,15 +347,16 @@ public static class JpegExtensions
                             block[0] = GetDc(dcPredictor, bitReader, sc, dcTable);
                             SetAc(bitReader, acTable, block);
 
+                            block
+                                .DequantizeInPlace(qTable)
+                                .ZigZagToNaturalInPlace()
+                                .IDCT8x8InPlace();
+
                             const int BLOCK_SIZE = 8;
                             var blockStartX = mx * maxH * BLOCK_SIZE + bx * BLOCK_SIZE * scaleX;
                             var blockStartY = my * maxV * BLOCK_SIZE + by * BLOCK_SIZE * scaleY;
 
-                            block
-                                .DequantizeInPlace(qTable)
-                                .ZigZagToNaturalInPlace()
-                                .IDCT8x8InPlace()
-                                .UpsampleInPlace(buffer, width, height, scaleX, scaleY, blockStartX, blockStartY);
+                            Upsampling.Upsample(block, buffer, width, height, scaleX, scaleY, blockStartX, blockStartY);
 
                             block.Clear();
                         }
@@ -363,22 +366,21 @@ public static class JpegExtensions
             }
         }
 
-        byte[] yBuffer = componentBuffers[1];
+        var yBuffer = componentBuffers[1];
         componentBuffers.TryGetValue(2, out var cbBuffer);
         componentBuffers.TryGetValue(3, out var crBuffer);
 
         var processor = PixelProcessorFactory.GetProcessor<T>();
 
-        fixed (byte* yPtr = yBuffer)
-        fixed (byte* cbPtr = cbBuffer)
-        fixed (byte* crPtr = crBuffer)
+        fixed (float* yPtr = yBuffer)
+        fixed (float* cbPtr = cbBuffer)
+        fixed (float* crPtr = crBuffer)
         {
             processor.FromYCbCr(yPtr, cbPtr, crPtr, output);
         }
 
-        ArrayPool<byte>.Shared.Return(yBuffer, true);
-        if (cbBuffer is not null) ArrayPool<byte>.Shared.Return(cbBuffer, true);
-        if (crBuffer is not null) ArrayPool<byte>.Shared.Return(crBuffer, true);
+        foreach (var buffer in componentBuffers)
+            pool.Return(buffer.Value);
     }
 
     static int GetDc(Dictionary<byte, int> dcPredictor, StreamBitReader bitReader, ScanComponent sc, CanonicalHuffmanTable dcTable)

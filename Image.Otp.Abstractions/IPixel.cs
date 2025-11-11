@@ -1,6 +1,4 @@
-﻿using System.Numerics;
-
-namespace Image.Otp.Abstractions;
+﻿namespace Image.Otp.Abstractions;
 
 public interface IPixel<T> : IEquatable<T>
 { }
@@ -12,4 +10,6 @@ public unsafe interface IPixelProcessor<T> where T : unmanaged, IPixel<T>
     T FromYCbCr(byte y, byte cb, byte cr);
 
     void FromYCbCr(byte* y, byte* cb, byte* cr, Span<T> output);
+
+    void FromYCbCr(float* y, float* cb, float* cr, Span<T> output) { }
 }

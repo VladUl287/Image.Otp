@@ -6,14 +6,14 @@ using Image.Otp.Core.Formats;
 using Image.Otp.Core.Loaders;
 using Image.Otp.Core.Primitives;
 
-var filePath = "C:\\Users\\User\\source\\repos\\images\\firstJpg_subampling.jpg";
+var filePath = "C:\\Users\\User\\source\\repos\\images\\firstJpg.jpg";
 var outputPath = "C:\\Users\\User\\source\\repos\\images\\firstJpg-output.jpg";
 
 if (IsReleaseBuild())
 {
-    BenchmarkRunner.Run<UpsampleBenchmark>();
-    //BenchmarkRunner.Run<JpegLoadBenchmark>();
+    //BenchmarkRunner.Run<UpsampleBenchmark>();
     //BenchmarkRunner.Run<IDCTBenchmark>();
+    BenchmarkRunner.Run<JpegLoadBenchmark>();
     return;
 }
 

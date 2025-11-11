@@ -1,17 +1,27 @@
-﻿using System.Numerics;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 
 namespace Image.Otp.Core.Extensions;
 
 public static class Upsampling
 {
-    public static Span<float> UpsampleInPlace(this Span<float> block, byte[] output, int width, int height, int scaleX, int scaleY, int blockStartX, int blockStartY)
+    public static void Upsample(Span<float> block, Span<float> output, int width, int height, int scaleX, int scaleY, int blockStartX, int blockStartY)
     {
         const int BLOCK_SIZE = 8;
 
-        var startY = Math.Max(blockStartY, 0);
-        var endY = Math.Min(blockStartY + BLOCK_SIZE * scaleY, height);
         var startX = Math.Max(blockStartX, 0);
+        var startY = Math.Max(blockStartY, 0);
+
+        if (scaleX == 1 && scaleY == 1)
+        {
+            var dstStart = startY * width + startX;
+
+            var colsToCopy = BLOCK_SIZE - Math.Max(0, startX + BLOCK_SIZE - width);
+            if (colsToCopy <= 0) return;
+
+            CopyTo1x1Scale(block, output[dstStart..], colsToCopy, width);
+        }
+
+        var endY = Math.Min(blockStartY + BLOCK_SIZE * scaleY, height);
         var endX = Math.Min(blockStartX + BLOCK_SIZE * scaleX, width);
 
         for (var y = startY; y < endY; y++)
@@ -28,48 +38,30 @@ public static class Upsampling
                 var sourceX = (x - blockStartX) / scaleX;
                 if (sourceX < 0 || sourceX >= BLOCK_SIZE) continue;
 
-                output[rowOffset + x] = (byte)ClampToByte(srcRow[sourceX]);
+                output[rowOffset + x] = srcRow[sourceX];
             }
         }
-
-        //for (var y = 0; y < BLOCK_SIZE; y++)
-        //{
-        //    for (var x = 0; x < BLOCK_SIZE; x++)
-        //    {
-        //        var sampleByte = (byte)ClampToByte(block[y * 8 + x]);
-
-        //        for (var uy = 0; uy < scaleY; uy++)
-        //        {
-        //            var outY = blockStartY + y * scaleY + uy;
-        //            if (outY < 0 || outY >= height) continue;
-
-        //            for (var ux = 0; ux < scaleX; ux++)
-        //            {
-        //                var outX = blockStartX + x * scaleX + ux;
-        //                if (outX < 0 || outX >= width) continue;
-
-        //                var dstIndex = outY * width + outX;
-        //                output[dstIndex] = sampleByte;
-        //            }
-        //        }
-        //    }
-        //}
-
-        return block;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static float ClampToByte(float sample)
+    private static void CopyTo1x1Scale(Span<float> src, Span<float> dst, int blockWidth, int width)
     {
-        var value = sample + 128.0f;
-        return Math.Max(0f, Math.Min(value, 255f));
-    }
+        const int BLOCK_SIZE = 8;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static byte ConvertSampleToByte(float sample)
-    {
-        int value = (int)(sample + 128.5);
-        uint clamped = (uint)Math.Max(0, Math.Min(value, 255));
-        return (byte)clamped;
+        CopyRowImpl(src, dst, blockWidth, width, 0);
+        CopyRowImpl(src, dst, blockWidth, width, 1);
+        CopyRowImpl(src, dst, blockWidth, width, 2);
+        CopyRowImpl(src, dst, blockWidth, width, 3);
+        CopyRowImpl(src, dst, blockWidth, width, 4);
+        CopyRowImpl(src, dst, blockWidth, width, 5);
+        CopyRowImpl(src, dst, blockWidth, width, 6);
+        CopyRowImpl(src, dst, blockWidth, width, 7);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void CopyRowImpl(Span<float> src, Span<float> dst, int colsToCopy, int width, int row)
+        {
+            var srcRow = src.Slice(row * BLOCK_SIZE, colsToCopy);
+            var dstRow = dst.Slice(row * width, colsToCopy);
+            srcRow.CopyTo(dstRow);
+        }
     }
 }

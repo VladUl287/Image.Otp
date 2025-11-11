@@ -130,7 +130,7 @@ public static class JpegExtensions
                 }
             }
 
-            qTables[tq] = raw;
+            qTables[tq] = raw.UnZigZag();
         }
 
         if (stream.Position != endPosition)
@@ -349,7 +349,6 @@ public static class JpegExtensions
 
                             block
                                 .DequantizeInPlace(qTable)
-                                .ZigZagToNaturalInPlace()
                                 .IDCT8x8InPlace();
 
                             const int BLOCK_SIZE = 8;
@@ -398,7 +397,7 @@ public static class JpegExtensions
             if (bits < 0)
                 throw new EndOfStreamException("EOF/marker while reading DC bits.");
 
-            dcDiff = JpegBlockProcessor.ExtendSign(bits, magnitude);
+            dcDiff = ZigZagExtensions.ExtendSign(bits, magnitude);
         }
 
         var prevDc = dcPredictor[sc.ComponentId];
@@ -410,6 +409,8 @@ public static class JpegExtensions
 
     static void SetAc(StreamBitReader bitReader, CanonicalHuffmanTable acTable, Span<float> block)
     {
+        var invZigZag = ZigZagExtensions.InverseZigZag;
+
         int k = 1;
         while (k < 64)
         {
@@ -439,8 +440,8 @@ public static class JpegExtensions
                 if (bits < 0) throw new EndOfStreamException("EOF/marker while reading AC bits.");
             }
 
-            var level = JpegBlockProcessor.ExtendSign(bits, size);
-            block[k] = level;
+            var level = ZigZagExtensions.ExtendSign(bits, size);
+            block[invZigZag[k]] = level;
             k++;
         }
     }

@@ -1,4 +1,5 @@
-﻿using Image.Otp.Core.Helpers;
+﻿using Image.Otp.Core.Extensions;
+using Image.Otp.Core.Helpers;
 using Image.Otp.Core.Models.Jpeg;
 
 namespace Image.Otp.Core;
@@ -219,7 +220,7 @@ public static class JpegMcuDecoder
         {
             int bits = bitReader.ReadBits(magnitude, false);
             if (bits < 0) throw new EndOfStreamException("EOF/marker while reading DC bits.");
-            dcDiff = JpegBlockProcessor.ExtendSign(bits, magnitude);
+            dcDiff = ZigZagExtensions.ExtendSign(bits, magnitude);
         }
 
         int prevDc = dcPredictor[sc.ComponentId];
@@ -475,7 +476,7 @@ public static class JpegMcuDecoder
                         {
                             int bits = bitReader.ReadBits(magnitude, false);
                             if (bits < 0) throw new EndOfStreamException("EOF/marker while reading DC bits.");
-                            dcDiff = JpegBlockProcessor.ExtendSign(bits, magnitude);
+                            dcDiff = ZigZagExtensions.ExtendSign(bits, magnitude);
                         }
                         int prevDc = dcPredictor[sc.ComponentId];
                         int dcVal = prevDc + dcDiff;
@@ -510,12 +511,12 @@ public static class JpegMcuDecoder
                                 bits = bitReader.ReadBits(size, false);
                                 if (bits < 0) throw new EndOfStreamException("EOF/marker while reading AC bits.");
                             }
-                            int level = JpegBlockProcessor.ExtendSign(bits, size);
+                            int level = ZigZagExtensions.ExtendSign(bits, size);
                             zz[k] = (short)level;
                             k++;
                         }
 
-                        short[] block = JpegBlockProcessor.ZigZagToNatural(zz);
+                        short[] block = ZigZagExtensions.UnZigZag(zz);
                         list.Add(block);
                     }
                 }

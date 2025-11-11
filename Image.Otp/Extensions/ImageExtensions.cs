@@ -100,7 +100,7 @@ public static class ImageExtensions
                     for (int i = 0; i < blocks.Value.Count; i++)
                     {
                         var block = blocks.Value[i];
-                        blocks.Value[i] = JpegBlockProcessor.ZigZagToNatural(blocks.Value[i]);
+                        blocks.Value[i] = ZigZagExtensions.UnZigZag(blocks.Value[i]);
                     }
                 }
             }

@@ -1,4 +1,5 @@
-﻿using Image.Otp.Core.Models.Jpeg;
+﻿using Image.Otp.Core.Extensions;
+using Image.Otp.Core.Models.Jpeg;
 
 namespace Image.Otp.Core.Parsers;
 
@@ -250,7 +251,7 @@ public static class JpegTableDecoder
                     }
                 }
 
-                var natural = JpegBlockProcessor.ZigZagToNatural(raw);
+                var natural = ZigZagExtensions.UnZigZag(raw);
 
                 tables[tq] = new QuantizationTable
                 {

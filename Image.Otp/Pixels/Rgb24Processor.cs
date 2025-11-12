@@ -1,46 +1,12 @@
 ﻿using Image.Otp.Abstractions;
 using Image.Otp.Core.Primitives;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
 namespace Image.Otp.Core.Pixels;
-
-public unsafe class Rgba32Processor : IPixelProcessor<Rgba32>
-{
-    public Rgba32 FromYCbCr(byte y, byte cb, byte cr)
-    {
-        double Yd = y;
-        double Cbd = cb - 128.0;
-        double Crd = cr - 128.0;
-
-        int r = (int)Math.Round(Yd + 1.402 * Crd);
-        int g = (int)Math.Round(Yd - 0.344136 * Cbd - 0.714136 * Crd);
-        int b = (int)Math.Round(Yd + 1.772 * Cbd);
-
-        r = Math.Clamp(r, 0, 255);
-        g = Math.Clamp(g, 0, 255);
-        b = Math.Clamp(b, 0, 255);
-
-        return new Rgba32((byte)r, (byte)g, (byte)b);
-    }
-
-    public unsafe void FromYCbCr(byte* y, byte* cb, byte* cr, Span<Rgba32> output)
-    {
-        for (var i = 0; i < output.Length; i++)
-            output[i] = FromYCbCr(y[i], cb[i], cr[i]);
-    }
-
-    public void ProcessPixel(byte* srcPtr, int srcPos, Rgba32* dstPtr, int dstPos, int bytesPerPixel)
-    {
-        byte r = srcPtr[srcPos + 0];
-        byte g = srcPtr[srcPos + 1];
-        byte b = srcPtr[srcPos + 2];
-        byte a = bytesPerPixel == 4 ? srcPtr[srcPos + 3] : (byte)255;
-
-        dstPtr[dstPos] = new Rgba32(r, g, b, a);
-    }
-}
 
 public unsafe class Rgb24Processor : IPixelProcessor<Rgb24>
 {
@@ -67,19 +33,16 @@ public unsafe class Rgb24Processor : IPixelProcessor<Rgb24>
 
         if (Avx.IsSupported)
         {
-            var c128 = Vector256.Create(128f);
-
-            var maxColor = Vector256.Create(255f);
             var zero = Vector256.Create(0f);
-
+            var c128 = Vector256.Create(128f);
+            var maxColor = Vector256.Create(255f);
             var f1_402 = Vector256.Create(1.402f);
+            var f1_772 = Vector256.Create(1.772f);
             var f0_344 = Vector256.Create(-0.344136f);
             var f0_714 = Vector256.Create(-0.714136f);
-            var f1_772 = Vector256.Create(1.772f);
 
-            var size = Vector256<float>.Count;
-
-            for (; i < output.Length - size; i += size)
+            var vecCount = Vector256<float>.Count;
+            for (; i < output.Length - vecCount; i += vecCount)
             {
                 var yVec = Vector256.Load(y + i);
                 var cbVec = Vector256.Load(cb + i);
@@ -102,7 +65,7 @@ public unsafe class Rgb24Processor : IPixelProcessor<Rgb24>
                 gFloat = Avx.Min(Avx.Max(gFloat, zero), maxColor);
                 bFloat = Avx.Min(Avx.Max(bFloat, zero), maxColor);
 
-                for (int j = 0; j < size; j++)
+                for (int j = 0; j < vecCount; j++)
                 {
                     var r = (byte)rFloat.GetElement(j);
                     var g = (byte)gFloat.GetElement(j);

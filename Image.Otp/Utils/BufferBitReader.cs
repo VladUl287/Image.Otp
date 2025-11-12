@@ -2,7 +2,7 @@
 
 namespace Image.Otp.Core.Utils;
 
-public unsafe sealed class BufferBitReader : IDisposable
+public unsafe sealed class BufferBitReader : IDisposable, IBitReader
 {
     private readonly Stream _stream;
     private readonly byte* _buffer;

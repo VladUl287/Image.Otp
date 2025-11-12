@@ -7,6 +7,7 @@ using Image.Otp.Abstractions;
 using System.Collections.Frozen;
 using Image.Otp.Core.Helpers.Jpg;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 
 namespace Image.Otp.Core.Extensions;
 
@@ -311,7 +312,17 @@ public static class JpegExtensions
             componentBuffers[comp.Id].AsSpan().Fill(128f);
         }
 
-        var huff = acc.CanonicalHuffmanTables;
+        var huffPool = ArrayPool<CanonicalHuffmanTable>.Shared;
+        var dcTables = huffPool.Rent(4);
+        var acTables = huffPool.Rent(4);
+        foreach (var huffTable in acc.CanonicalHuffmanTables)
+        {
+            if (huffTable.Key.Class == 0)
+                dcTables[huffTable.Key.Id] = huffTable.Value;
+            else
+                acTables[huffTable.Key.Id] = huffTable.Value;
+        }
+
         var qTables = acc.QuantTables;
 
         var bitReader = new StreamBitReader(stream);
@@ -330,8 +341,8 @@ public static class JpegExtensions
                     var qTable = qTables[comp.QuantizationTableId]
                         ?? throw new InvalidOperationException($"Quantization table {comp.QuantizationTableId} not found.");
 
-                    var dcTable = huff[(0, sc.DcHuffmanTableId)];
-                    var acTable = huff[(1, sc.AcHuffmanTableId)];
+                    var dcTable = dcTables[sc.DcHuffmanTableId];
+                    var acTable = acTables[sc.AcHuffmanTableId];
 
                     var h = comp.HorizontalSampling;
                     var v = comp.VerticalSampling;
@@ -377,6 +388,9 @@ public static class JpegExtensions
         {
             processor.FromYCbCr(yPtr, cbPtr, crPtr, output);
         }
+
+        huffPool.Return(acTables);
+        huffPool.Return(dcTables);
 
         foreach (var buffer in componentBuffers)
             pool.Return(buffer.Value);

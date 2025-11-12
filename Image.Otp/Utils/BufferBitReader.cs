@@ -23,13 +23,20 @@ public unsafe sealed class BufferBitReader : IDisposable
         return 1;
     }
 
-    public int ReadBit()
+    public int ReadBits(int n, bool signed = true)
     {
         return 1;
     }
 
-    public void Dispose()
+    public int PeekBits(int n, bool signed = true)
     {
-        NativeMemory.Free(_buffer);
+        return 1;
     }
+
+    public void ConsumeBits(int n)
+    {
+
+    }
+
+    public void Dispose() => NativeMemory.Free(_buffer);
 }

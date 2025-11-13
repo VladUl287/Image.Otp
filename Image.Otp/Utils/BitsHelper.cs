@@ -8,20 +8,20 @@ public static class BitsHelper
         {
             if (bits[0] == 1)
             {
-                return ToNumber(bits);
+                return BitToNumber(bits);
             }
             else
             {
                 for (int i = 0; i < bits.Length; i++)
                     bits[i] = 1 - bits[i];
 
-                return -ToNumber(bits);
+                return -BitToNumber(bits);
             }
         }
-        return ToNumber(bits);
+        return BitToNumber(bits);
     }
 
-    private static int ToNumber(Span<int> bits)
+    private static int BitToNumber(Span<int> bits)
     {
         var res = 0;
         for (int i = 0; i < bits.Length; i++)

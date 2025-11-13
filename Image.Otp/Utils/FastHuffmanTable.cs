@@ -2,7 +2,7 @@
 
 namespace Image.Otp.Core.Utils;
 
-public sealed class FastHuffmanTable : IHuffmanTable
+public sealed class FastHuffmanTable
 {
     private readonly ushort[] _lookup; // 64K direct lookup table
     private readonly byte[] _sizeTable; // Code sizes for validation

@@ -1,4 +1,5 @@
 ﻿using Image.Otp.Core.Models.Jpeg;
+using Image.Otp.Core.Utils;
 using System.Buffers;
 
 namespace Image.Otp.Core.Helpers;
@@ -56,35 +57,7 @@ public static class JpegHelpres
         ArrayPool<double>.Shared.Return(tmp);
     }
 
-    public static int FindNextMarker(StreamBitReader br)
-    {
-        while (true)
-        {
-            int b = br.ReadRawByte();
-            if (b < 0)
-                return -1;
-
-            if (b == 0xFF)
-            {
-                // skip any 0xFF fills
-                int second;
-                do
-                {
-                    second = br.ReadRawByte();
-                    if (second < 0) return -1;
-                } while (second == 0xFF);
-
-                if (second == 0x00)
-                {
-                    // stuffed 0xFF data byte, continue scanning
-                    continue;
-                }
-                return second;
-            }
-        }
-    }
-
-    public static int DecodeHuffmanSymbol(StreamBitReader br, CanonicalHuffmanTable table)
+    public static int DecodeHuffmanSymbol(JpegBitReader br, CanonicalHuffmanTable table)
     {
         var code = 0;
         for (var length = 1; length <= 16; length++)

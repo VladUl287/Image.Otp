@@ -8,6 +8,7 @@ using System.Collections.Frozen;
 using Image.Otp.Core.Helpers.Jpg;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+using Image.Otp.Core.Utils;
 
 namespace Image.Otp.Core.Extensions;
 
@@ -325,7 +326,7 @@ public static class JpegExtensions
 
         var qTables = acc.QuantTables;
 
-        var bitReader = new StreamBitReader(stream);
+        var bitReader = new JpegBitReader(stream);
 
         var width = frameInfo.Width;
         var height = frameInfo.Height;
@@ -396,7 +397,7 @@ public static class JpegExtensions
             pool.Return(buffer.Value);
     }
 
-    static int GetDc(Dictionary<byte, int> dcPredictor, StreamBitReader bitReader, ScanComponent sc, CanonicalHuffmanTable dcTable)
+    static int GetDc(Dictionary<byte, int> dcPredictor, JpegBitReader bitReader, ScanComponent sc, CanonicalHuffmanTable dcTable)
     {
         var sym = JpegHelpres.DecodeHuffmanSymbol(bitReader, dcTable);
         if (sym < 0)
@@ -421,11 +422,11 @@ public static class JpegExtensions
         return dcVal;
     }
 
-    static void SetAc(StreamBitReader bitReader, CanonicalHuffmanTable acTable, Span<float> block)
+    static void SetAc(JpegBitReader bitReader, CanonicalHuffmanTable acTable, Span<float> block)
     {
         var invZigZag = ZigZagExtensions.InverseZigZag;
 
-        int k = 1;
+        var k = 1;
         while (k < 64)
         {
             int acSym = JpegHelpres.DecodeHuffmanSymbol(bitReader, acTable);

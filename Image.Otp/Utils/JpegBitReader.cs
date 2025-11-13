@@ -1,91 +1,87 @@
-﻿using System.Buffers;
+﻿using System.Runtime.CompilerServices;
 
 namespace Image.Otp.Core.Utils;
 
 public sealed class JpegBitReader(Stream stream) : IBitReader
 {
-    public int BitBuffer { get; private set; } = 0;
-    public int BitCount { get; private set; } = 0;
+    private int _bitBuffer = 0;
+    private int _bitCount = 0;
 
+    public int BitBuffer => _bitBuffer;
+    public int BitCount => _bitCount;
+
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int ReadBit()
     {
-        if (BitCount == 0)
+        if (_bitCount == 0)
         {
-            var b = ReadByte();
-            if (b < 0) return -1;
-
-            if (b == 0xFF)
-            {
-                var next = ReadByte();
-                if (next == -1) return -1;
-                if (next != 0x00)
-                {
-                    stream.Seek(-2, SeekOrigin.Current);
-                    return -1;
-                }
-            }
-            BitBuffer = b;
-            BitCount = 8;
+            if (!RefillBuffer()) return -1;
         }
 
-        BitCount--;
-        return (BitBuffer >> BitCount) & 1;
+        _bitCount--;
+        return (_bitBuffer >> _bitCount) & 1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool RefillBuffer()
+    {
+        int b = ReadByte();
+        if (b < 0) return false;
+
+        if (b == 0xFF)
+        {
+            int next = ReadByte();
+            if (next < 0) return false;
+            if (next != 0x00)
+            {
+                stream.Seek(-2, SeekOrigin.Current);
+                return false;
+            }
+        }
+
+        _bitBuffer = b;
+        _bitCount = 8;
+        return true;
     }
 
     public int ReadBits(int n, bool signed = true)
     {
-        var bits = ArrayPool<int>.Shared.Rent(n);
-        try
+        if (n <= 0 || n > 32) return -1;
+
+        int result = 0;
+        for (int i = 0; i < n; i++)
         {
-            for (var i = 0; i < n; i++)
+            int bit = ReadBit();
+            if (bit < 0) return -1;
+            result = (result << 1) | bit;
+        }
+
+        if (signed)
+        {
+            if (n < 32 && (result & (1 << (n - 1))) != 0)
             {
-                var b = ReadBit();
-                if (b < 0) return -1;
-                bits[i] = b;
+                result |= -1 << n;
             }
-            return bits.AsSpan(0, n).ToNumber(signed);
         }
-        finally
-        {
-            ArrayPool<int>.Shared.Return(bits);
-        }
+
+        return result;
     }
 
     public int PeekBits(int n, bool signed = true)
     {
-        SaveState();
-        var bits = ReadBits(n, signed);
-        RestoreState();
-        return bits;
+        throw new NotImplementedException();
     }
 
     public void ConsumeBits(int n)
     {
-        for (var i = 0; i < n; i++)
-            if (ReadBit() < 0) return;
+        throw new NotImplementedException();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int ReadByte()
     {
         if (!stream.CanRead) return -1;
         return stream.ReadByte();
-    }
-
-    private int _savedBitBuffer = 0;
-    private int _savedBitCount = 0;
-    private long _savedPosition = 0;
-
-    private void SaveState()
-    {
-        _savedBitBuffer = BitBuffer;
-        _savedBitCount = BitCount;
-        _savedPosition = stream.Position;
-    }
-
-    private void RestoreState()
-    {
-        BitBuffer = _savedBitBuffer;
-        BitCount = _savedBitCount;
-        stream.Position = _savedPosition;
     }
 }

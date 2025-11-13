@@ -2,7 +2,7 @@
 
 namespace Image.Otp.Core.Utils;
 
-public sealed class JpegBitReader(Stream stream)
+public sealed class JpegBitReader(Stream stream) : IBitReader
 {
     public int BitBuffer { get; private set; } = 0;
     public int BitCount { get; private set; } = 0;

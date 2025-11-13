@@ -3,6 +3,7 @@ using Image.Otp.Core.Parsers;
 using System.Runtime.InteropServices;
 using Image.Otp.Core.Pixels;
 using Image.Otp.Abstractions;
+using Image.Otp.Core.Utils;
 
 namespace Image.Otp.Core.Extensions;
 
@@ -14,7 +15,7 @@ public static class ImageExtensions
 
         Dictionary<byte, QuantizationTable> qTables = JpegTableDecoder.ParseDqtSegments(segments);
 
-        List<HuffmanTable> hTables = JpegTableDecoder.ParseDhtSegments(segments);
+        List<OldHuffmanTable> hTables = JpegTableDecoder.ParseDhtSegments(segments);
 
         JpegSegment frameSegment = segments.First(s => s.Marker == 0xC0 || s.Marker == 0xC2);
         var progressive = frameSegment.Marker == 0xC2;
@@ -43,7 +44,7 @@ public static class ImageExtensions
         {
             var sosDhtDataSegments = segments.Where(s => new byte[] { 0xDA, 0x00, 0xC4 }.Contains(s.Marker)).ToList();
 
-            var currentTables = new Dictionary<(int Class, int Id), HuffmanTable>();
+            var currentTables = new Dictionary<(int Class, int Id), OldHuffmanTable>();
 
             List<MCUBlock>? currentMcus = null;
             ScanInfo? currentScanInfo = null;

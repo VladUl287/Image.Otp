@@ -1,5 +1,6 @@
 ﻿using Image.Otp.Core.Extensions;
 using Image.Otp.Core.Models.Jpeg;
+using Image.Otp.Core.Utils;
 
 namespace Image.Otp.Core.Parsers;
 
@@ -102,9 +103,9 @@ public static class JpegTableDecoder
         };
     }
 
-    public static List<HuffmanTable> ParseDhtSegments(List<JpegSegment> segments)
+    public static List<OldHuffmanTable> ParseDhtSegments(List<JpegSegment> segments)
     {
-        var tables = new List<HuffmanTable>();
+        var tables = new List<OldHuffmanTable>();
 
         foreach (var seg in segments)
         {
@@ -134,7 +135,7 @@ public static class JpegTableDecoder
                 Buffer.BlockCopy(data, pos, symbols, 0, symbolCount);
                 pos += symbolCount;
 
-                tables.Add(new HuffmanTable
+                tables.Add(new OldHuffmanTable
                 {
                     Class = tc,
                     Id = th,

@@ -436,7 +436,7 @@ public static class JpegExtensions
         return dcVal;
     }
 
-    static int GetDc(Dictionary<byte, int> dcPredictor, JpegBitReader bitReader, ScanComponent sc, FastHuffmanTable dcTable)
+    static int GetDc(Dictionary<byte, int> dcPredictor, IBitReader bitReader, ScanComponent sc, FastHuffmanTable dcTable)
     {
         var sym = JpegHelpres.DecodeHuffmanSymbol(bitReader, dcTable);
         if (sym < 0)
@@ -500,7 +500,7 @@ public static class JpegExtensions
         }
     }
 
-    static void SetAc(JpegBitReader bitReader, FastHuffmanTable acTable, Span<float> block)
+    static void SetAc(IBitReader bitReader, FastHuffmanTable acTable, Span<float> block)
     {
         var invZigZag = ZigZagExtensions.InverseZigZag;
 

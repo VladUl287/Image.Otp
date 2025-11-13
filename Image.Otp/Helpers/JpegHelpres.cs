@@ -75,7 +75,7 @@ public static class JpegHelpres
         throw new InvalidDataException("Invalid Huffman code (no symbol within 16 bits).");
     }
 
-    public static int DecodeHuffmanSymbol(JpegBitReader br, FastHuffmanTable table)
+    public static int DecodeHuffmanSymbol(IBitReader br, FastHuffmanTable table)
     {
         var bits = br.PeekBits(16);
         var (symbol, length) = table.Decode((uint)bits);

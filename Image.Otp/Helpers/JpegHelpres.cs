@@ -1,4 +1,5 @@
-﻿using Image.Otp.Core.Models.Jpeg;
+﻿using Image.Otp.Core.Constants;
+using Image.Otp.Core.Models.Jpeg;
 using Image.Otp.Core.Utils;
 using System.Buffers;
 
@@ -73,5 +74,42 @@ public static class JpegHelpres
         }
 
         throw new InvalidDataException("Invalid Huffman code (no symbol within 16 bits).");
+    }
+
+    public static unsafe int DecodeHuffmanSymbol(JpegBitReader bitReader, HuffmanTable table)
+    {
+        if(!bitReader.EnsureBits(Huffman.LookupBits))
+            return 0;
+
+        var index = bitReader.PeekBits(Huffman.LookupBits, false);
+        var size = table.LookaheadSize[index];
+
+        if (size < Huffman.SlowBits)
+        {
+            bitReader.ConsumeBits(size);
+            return table.LookaheadValue[index];
+        }
+
+        if (!bitReader.EnsureBits(Huffman.MaxCodeLength))
+            return 0;
+
+        var bitBuffer = bitReader.BitBuffer;
+        var bitCount = bitReader.BitCount;
+
+        ulong x = (ulong)bitBuffer << (Huffman.RegisterSize - bitCount);
+
+        size = Huffman.LookupBits + 1;
+        while (x > table.MaxCode[size])
+        {
+            size++;
+            if (size > Huffman.MaxCodeLength)
+                return -1;
+        }
+
+        bitReader.ConsumeBits(size);
+
+        var shift = Huffman.RegisterSize - size;
+        var valueIndex = table.ValOffset[size] + (int)(x >> shift);
+        return table.Values[valueIndex & 0xFF];
     }
 }

@@ -20,6 +20,7 @@ public static class JpegExtensions
         public Dictionary<byte, float[]> QuantTables { get; init; } = [];
 
         public Dictionary<(byte Class, byte Id), CanonicalHuffmanTable> CanonicalHuffmanTables { get; init; } = [];
+        public Dictionary<(byte Class, byte Id), HuffmanTable> HuffmanTables { get; init; } = [];
 
         public int RestartInterval { get; set; }
     }
@@ -194,7 +195,7 @@ public static class JpegExtensions
         const int CODE_LENGTH = 16;
 
         Span<byte> lengths = stackalloc byte[CODE_LENGTH];
-
+        Span<uint> workspace = stackalloc uint[256];
         while (stream.Position < endPosition)
         {
             var tcTh = stream.ReadByte();
@@ -215,6 +216,8 @@ public static class JpegExtensions
 
             var table = HuffmanTableLogic.BuildCanonical(lengths, symbols);
             acc.CanonicalHuffmanTables[(tc, th)] = table;
+
+            acc.HuffmanTables[(tc, th)] = new HuffmanTable([0, .. lengths], symbols, workspace);
         }
     }
 
@@ -310,10 +313,21 @@ public static class JpegExtensions
             componentBuffers[comp.Id].AsSpan().Fill(128f);
         }
 
-        var huffPool = ArrayPool<CanonicalHuffmanTable>.Shared;
+        //var huffPool = ArrayPool<CanonicalHuffmanTable>.Shared;
+        //var dcTables = huffPool.Rent(4);
+        //var acTables = huffPool.Rent(4);
+        //foreach (var huffTable in acc.CanonicalHuffmanTables)
+        //{
+        //    if (huffTable.Key.Class == 0)
+        //        dcTables[huffTable.Key.Id] = huffTable.Value;
+        //    else
+        //        acTables[huffTable.Key.Id] = huffTable.Value;
+        //}
+
+        var huffPool = ArrayPool<HuffmanTable>.Shared;
         var dcTables = huffPool.Rent(4);
         var acTables = huffPool.Rent(4);
-        foreach (var huffTable in acc.CanonicalHuffmanTables)
+        foreach (var huffTable in acc.HuffmanTables)
         {
             if (huffTable.Key.Class == 0)
                 dcTables[huffTable.Key.Id] = huffTable.Value;
@@ -369,7 +383,6 @@ public static class JpegExtensions
                             block.Clear();
                         }
                     }
-
                 }
             }
         }
@@ -392,6 +405,76 @@ public static class JpegExtensions
 
         foreach (var buffer in componentBuffers)
             pool.Return(buffer.Value);
+    }
+
+    static int GetDc(Dictionary<byte, int> dcPredictor, JpegBitReader bitReader, ScanComponent sc, HuffmanTable dcTable)
+    {
+        var sym = JpegHelpres.DecodeHuffmanSymbol(bitReader, dcTable);
+        if (sym < 0)
+        {
+            return -1;
+            throw new EndOfStreamException("Marker or EOF encountered while decoding DC.");
+        }
+
+        var magnitude = sym; // number of additional bits
+        var dcDiff = 0;
+
+        if (magnitude > 0)
+        {
+            var bits = bitReader.ReadBits(magnitude, false);
+            if (bits < 0)
+                throw new EndOfStreamException("EOF/marker while reading DC bits.");
+
+            dcDiff = ZigZagExtensions.ExtendSign(bits, magnitude);
+        }
+
+        var prevDc = dcPredictor[sc.ComponentId];
+        var dcVal = prevDc + dcDiff;
+        dcPredictor[sc.ComponentId] = dcVal;
+
+        return dcVal;
+    }
+
+    static void SetAc(JpegBitReader bitReader, HuffmanTable acTable, Span<float> block)
+    {
+        var invZigZag = ZigZagExtensions.InverseZigZag;
+
+        var k = 1;
+        while (k < 64)
+        {
+            int acSym = JpegHelpres.DecodeHuffmanSymbol(bitReader, acTable);
+            if (acSym < 0)
+            {
+                return;
+                throw new EndOfStreamException("Marker or EOF encountered while decoding AC.");
+            }
+
+            if (acSym == 0x00)
+                break;
+
+            if (acSym == 0xF0)
+            {
+                k += 16;
+                continue;
+            }
+
+            int run = (acSym >> 4) & 0x0F;
+            int size = acSym & 0x0F;
+            k += run;
+            if (k >= 64)
+                throw new InvalidDataException("Run exceeds block size while decoding AC.");
+
+            int bits = 0;
+            if (size > 0)
+            {
+                bits = bitReader.ReadBits(size, false);
+                if (bits < 0) throw new EndOfStreamException("EOF/marker while reading AC bits.");
+            }
+
+            var level = ZigZagExtensions.ExtendSign(bits, size);
+            block[invZigZag[k]] = level;
+            k++;
+        }
     }
 
     static int GetDc(Dictionary<byte, int> dcPredictor, JpegBitReader bitReader, ScanComponent sc, CanonicalHuffmanTable dcTable)

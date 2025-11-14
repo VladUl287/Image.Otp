@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using Image.Otp.Core.Constants;
+using System.Runtime.CompilerServices;
 
 namespace Image.Otp.Core.Utils;
 
@@ -26,12 +27,12 @@ public sealed class JpegBitReader(Stream stream) : IBitReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool RefillBuffer()
     {
-        int b = ReadByte();
+        var b = ReadByte();
         if (b < 0) return false;
 
         if (b == 0xFF)
         {
-            int next = ReadByte();
+            var next = ReadByte();
             if (next < 0) return false;
             if (next != 0x00)
             {
@@ -42,6 +43,28 @@ public sealed class JpegBitReader(Stream stream) : IBitReader
 
         _bitBuffer = b;
         _bitCount = 8;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool FillBuffer()
+    {
+        var b = ReadByte();
+        if (b < 0) return false;
+
+        if (b == 0xFF)
+        {
+            var next = ReadByte();
+            if (next < 0) return false;
+            if (next != 0x00)
+            {
+                stream.Seek(-2, SeekOrigin.Current);
+                return false;
+            }
+        }
+
+        _bitBuffer = (_bitBuffer << 8) | b;
+        _bitCount += 8;
         return true;
     }
 
@@ -60,22 +83,45 @@ public sealed class JpegBitReader(Stream stream) : IBitReader
         if (signed)
         {
             if (n < 32 && (result & (1 << (n - 1))) != 0)
-            {
                 result |= -1 << n;
-            }
         }
 
         return result;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool EnsureBits(int minBits = Huffman.MinBits)
+    {
+        while (_bitCount < minBits)
+            if (!FillBuffer()) return false;
+        return true;
+    }
+
     public int PeekBits(int n, bool signed = true)
     {
-        throw new NotImplementedException();
+        if (n <= 0 || n > 32) return -1;
+
+        if (_bitCount < n)
+            return -1;
+
+        var result = (_bitBuffer >> (_bitCount - n)) & ((1 << n) - 1);
+        if (signed)
+        {
+            if (n < 32 && (result & (1 << (n - 1))) != 0)
+                result |= -1 << n;
+        }
+
+        return result;
+
     }
 
     public void ConsumeBits(int n)
     {
-        throw new NotImplementedException();
+        if (n < 0 || n > _bitCount)
+            throw new ArgumentOutOfRangeException(nameof(n), $"Cannot consume {n} bits when only {_bitCount} are available");
+
+        _bitCount -= n;
+        _bitBuffer &= (1 << _bitCount) - 1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

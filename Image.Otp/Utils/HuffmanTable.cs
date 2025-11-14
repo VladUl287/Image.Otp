@@ -14,10 +14,6 @@ public sealed class HuffmanTable
 
     public byte[] LookaheadValue { get; } = new byte[Huffman.LookupSize];
 
-    public int MinCodeLength;
-
-    public int MaxCodeLength;
-
     public HuffmanTable(ReadOnlySpan<byte> codeLengths, ReadOnlySpan<byte> values, Span<uint> workspace)
     {
         if (values.Length > Values.Length)

@@ -33,7 +33,7 @@ public sealed class HuffmanTable
 
         for (var codeLength = 1; codeLength <= Huffman.MaxCodeLength; codeLength++)
         {
-            var codeCount = codeLengths[codeLength];
+            var codeCount = codeLengths[codeLength - 1];
 
             for (var i = 0; i < codeCount; i++)
             {
@@ -55,7 +55,7 @@ public sealed class HuffmanTable
 
         for (var codeLength = 1; codeLength <= Huffman.MaxCodeLength; codeLength++)
         {
-            var codeCount = codeLengths[codeLength];
+            var codeCount = codeLengths[codeLength - 1];
 
             if (codeCount > 0)
             {
@@ -91,7 +91,7 @@ public sealed class HuffmanTable
 
         for (var codeLength = 1; codeLength <= Huffman.LookupBits; codeLength++)
         {
-            var codeCount = codeLengths[codeLength];
+            var codeCount = codeLengths[codeLength - 1];
             var shiftAmount = Huffman.LookupBits - codeLength;
 
             for (var i = 0; i < codeCount; i++, symbolIndex++)

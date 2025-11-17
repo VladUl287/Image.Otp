@@ -370,15 +370,15 @@ public static class JpegExtensions
                             block[0] = GetDc(dcPredictor, bitReader, sc, dcTable);
                             SetAc(bitReader, acTable, block);
 
-                            block
-                                .DequantizeInPlace(qTable)
-                                .IDCT8x8InPlace();
+                            //block
+                            //    .DequantizeInPlace(qTable)
+                            //    .IDCT8x8InPlace();
 
-                            const int BLOCK_SIZE = 8;
-                            var blockStartX = mx * maxH * BLOCK_SIZE + bx * BLOCK_SIZE * scaleX;
-                            var blockStartY = my * maxV * BLOCK_SIZE + by * BLOCK_SIZE * scaleY;
+                            //const int BLOCK_SIZE = 8;
+                            //var blockStartX = mx * maxH * BLOCK_SIZE + bx * BLOCK_SIZE * scaleX;
+                            //var blockStartY = my * maxV * BLOCK_SIZE + by * BLOCK_SIZE * scaleY;
 
-                            Upsampling.Upsample(block, buffer, width, height, scaleX, scaleY, blockStartX, blockStartY);
+                            //Upsampling.Upsample(block, buffer, width, height, scaleX, scaleY, blockStartX, blockStartY);
 
                             block.Clear();
                         }
@@ -397,7 +397,7 @@ public static class JpegExtensions
         fixed (float* cbPtr = cbBuffer)
         fixed (float* crPtr = crBuffer)
         {
-            processor.FromYCbCr(yPtr, cbPtr, crPtr, output);
+            //processor.FromYCbCr(yPtr, cbPtr, crPtr, output);
         }
 
         huffPool.Return(acTables);
@@ -409,14 +409,11 @@ public static class JpegExtensions
 
     static int GetDc(Dictionary<byte, int> dcPredictor, JpegBitReader bitReader, ScanComponent sc, HuffmanTable dcTable)
     {
-        var sym = JpegHelpres.DecodeHuffmanSymbol(bitReader, dcTable);
-        if (sym < 0)
-        {
-            return -1;
+        var symbol = JpegHelpres.DecodeHuffmanSymbol(bitReader, dcTable);
+        if (symbol < 0)
             throw new EndOfStreamException("Marker or EOF encountered while decoding DC.");
-        }
 
-        var magnitude = sym; // number of additional bits
+        var magnitude = symbol; // number of additional bits
         var dcDiff = 0;
 
         if (magnitude > 0)

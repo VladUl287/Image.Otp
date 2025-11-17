@@ -431,42 +431,39 @@ public static class JpegExtensions
     static void SetAc(JpegBitReader bitReader, HuffmanTable acTable, Span<float> block)
     {
         var invZigZag = ZigZagExtensions.InverseZigZag;
-
-        var k = 1;
-        while (k < 64)
+        var i = 1;
+        while (i < 64)
         {
-            int acSym = JpegHelpres.DecodeHuffmanSymbol(bitReader, acTable);
-            if (acSym < 0)
-            {
-                return;
+            var bitCount = JpegHelpres.DecodeHuffmanSymbol(bitReader, acTable);
+            if (bitCount < 0)
                 throw new EndOfStreamException("Marker or EOF encountered while decoding AC.");
-            }
 
-            if (acSym == 0x00)
+            if (bitCount == 0x00)
                 break;
 
-            if (acSym == 0xF0)
+            if (bitCount == 0xF0)
             {
-                k += 16;
+                i += 16;
                 continue;
             }
 
-            int run = (acSym >> 4) & 0x0F;
-            int size = acSym & 0x0F;
-            k += run;
-            if (k >= 64)
+            var run = (bitCount >> 4) & 0x0F;
+            var size = bitCount & 0x0F;
+            i += run;
+
+            if (i >= 64)
                 throw new InvalidDataException("Run exceeds block size while decoding AC.");
 
-            int bits = 0;
+            var bits = 0;
             if (size > 0)
             {
                 bits = bitReader.ReadBits(size);
-                if (bits < 0) throw new EndOfStreamException("EOF/marker while reading AC bits.");
+                if (bits < 0)
+                    throw new EndOfStreamException("EOF/marker while reading AC bits.");
             }
 
-            var level = ZigZagExtensions.Extend(bits, size);
-            block[invZigZag[k]] = level;
-            k++;
+            var acVal = ZigZagExtensions.Extend(bits, size);
+            block[invZigZag[i++]] = acVal;
         }
     }
 

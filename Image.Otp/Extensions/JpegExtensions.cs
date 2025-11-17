@@ -370,15 +370,15 @@ public static class JpegExtensions
                             block[0] = GetDc(dcPredictor, bitReader, sc, dcTable);
                             SetAc(bitReader, acTable, block);
 
-                            //block
-                            //    .DequantizeInPlace(qTable)
-                            //    .IDCT8x8InPlace();
+                            block
+                                .DequantizeInPlace(qTable)
+                                .IDCT8x8InPlace();
 
-                            //const int BLOCK_SIZE = 8;
-                            //var blockStartX = mx * maxH * BLOCK_SIZE + bx * BLOCK_SIZE * scaleX;
-                            //var blockStartY = my * maxV * BLOCK_SIZE + by * BLOCK_SIZE * scaleY;
+                            const int BLOCK_SIZE = 8;
+                            var blockStartX = mx * maxH * BLOCK_SIZE + bx * BLOCK_SIZE * scaleX;
+                            var blockStartY = my * maxV * BLOCK_SIZE + by * BLOCK_SIZE * scaleY;
 
-                            //Upsampling.Upsample(block, buffer, width, height, scaleX, scaleY, blockStartX, blockStartY);
+                            Upsampling.Upsample(block, buffer, width, height, scaleX, scaleY, blockStartX, blockStartY);
 
                             block.Clear();
                         }
@@ -397,7 +397,7 @@ public static class JpegExtensions
         fixed (float* cbPtr = cbBuffer)
         fixed (float* crPtr = crBuffer)
         {
-            //processor.FromYCbCr(yPtr, cbPtr, crPtr, output);
+            processor.FromYCbCr(yPtr, cbPtr, crPtr, output);
         }
 
         huffPool.Return(acTables);
@@ -409,26 +409,22 @@ public static class JpegExtensions
 
     static int GetDc(Dictionary<byte, int> dcPredictor, JpegBitReader bitReader, ScanComponent sc, HuffmanTable dcTable)
     {
-        var symbol = JpegHelpres.DecodeHuffmanSymbol(bitReader, dcTable);
-        if (symbol < 0)
+        var bitCount = JpegHelpres.DecodeHuffmanSymbol(bitReader, dcTable);
+        if (bitCount < 0)
             throw new EndOfStreamException("Marker or EOF encountered while decoding DC.");
 
-        var magnitude = symbol; // number of additional bits
         var dcDiff = 0;
-
-        if (magnitude > 0)
+        if (bitCount > 0)
         {
-            var bits = bitReader.ReadBits(magnitude, false);
+            var bits = bitReader.ReadBits(bitCount);
             if (bits < 0)
                 throw new EndOfStreamException("EOF/marker while reading DC bits.");
 
-            dcDiff = ZigZagExtensions.ExtendSign(bits, magnitude);
+            dcDiff = ZigZagExtensions.Extend(bits, bitCount);
         }
 
-        var prevDc = dcPredictor[sc.ComponentId];
-        var dcVal = prevDc + dcDiff;
+        var dcVal = dcPredictor[sc.ComponentId] + dcDiff;
         dcPredictor[sc.ComponentId] = dcVal;
-
         return dcVal;
     }
 
@@ -464,11 +460,11 @@ public static class JpegExtensions
             int bits = 0;
             if (size > 0)
             {
-                bits = bitReader.ReadBits(size, false);
+                bits = bitReader.ReadBits(size);
                 if (bits < 0) throw new EndOfStreamException("EOF/marker while reading AC bits.");
             }
 
-            var level = ZigZagExtensions.ExtendSign(bits, size);
+            var level = ZigZagExtensions.Extend(bits, size);
             block[invZigZag[k]] = level;
             k++;
         }
@@ -485,11 +481,11 @@ public static class JpegExtensions
 
         if (magnitude > 0)
         {
-            var bits = bitReader.ReadBits(magnitude, false);
+            var bits = bitReader.ReadBits(magnitude);
             if (bits < 0)
                 throw new EndOfStreamException("EOF/marker while reading DC bits.");
 
-            dcDiff = ZigZagExtensions.ExtendSign(bits, magnitude);
+            dcDiff = ZigZagExtensions.Extend(bits, magnitude);
         }
 
         var prevDc = dcPredictor[sc.ComponentId];
@@ -528,11 +524,11 @@ public static class JpegExtensions
             int bits = 0;
             if (size > 0)
             {
-                bits = bitReader.ReadBits(size, false);
+                bits = bitReader.ReadBits(size);
                 if (bits < 0) throw new EndOfStreamException("EOF/marker while reading AC bits.");
             }
 
-            var level = ZigZagExtensions.ExtendSign(bits, size);
+            var level = ZigZagExtensions.Extend(bits, size);
             block[invZigZag[k]] = level;
             k++;
         }

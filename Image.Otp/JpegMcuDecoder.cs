@@ -220,7 +220,7 @@ public static class JpegMcuDecoder
         {
             int bits = bitReader.ReadBits(magnitude, false);
             if (bits < 0) throw new EndOfStreamException("EOF/marker while reading DC bits.");
-            dcDiff = ZigZagExtensions.ExtendSign(bits, magnitude);
+            dcDiff = ZigZagExtensions.Extend(bits, magnitude);
         }
 
         int prevDc = dcPredictor[sc.ComponentId];
@@ -476,7 +476,7 @@ public static class JpegMcuDecoder
                         {
                             int bits = bitReader.ReadBits(magnitude, false);
                             if (bits < 0) throw new EndOfStreamException("EOF/marker while reading DC bits.");
-                            dcDiff = ZigZagExtensions.ExtendSign(bits, magnitude);
+                            dcDiff = ZigZagExtensions.Extend(bits, magnitude);
                         }
                         int prevDc = dcPredictor[sc.ComponentId];
                         int dcVal = prevDc + dcDiff;
@@ -511,7 +511,7 @@ public static class JpegMcuDecoder
                                 bits = bitReader.ReadBits(size, false);
                                 if (bits < 0) throw new EndOfStreamException("EOF/marker while reading AC bits.");
                             }
-                            int level = ZigZagExtensions.ExtendSign(bits, size);
+                            int level = ZigZagExtensions.Extend(bits, size);
                             zz[k] = (short)level;
                             k++;
                         }

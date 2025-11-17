@@ -81,7 +81,7 @@ public static class JpegHelpres
         if(!bitReader.EnsureBits(Huffman.LookupBits))
             return 0;
 
-        var index = bitReader.PeekBits(Huffman.LookupBits, false);
+        var index = bitReader.PeekBits(Huffman.LookupBits);
         var size = table.LookaheadSize[index];
 
         if (size < Huffman.SlowBits)

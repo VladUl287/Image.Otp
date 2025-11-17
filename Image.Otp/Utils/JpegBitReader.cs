@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 
 namespace Image.Otp.Core.Utils;
 
-public sealed class JpegBitReader(Stream stream) : IBitReader
+public sealed class JpegBitReader(Stream stream)
 {
     private int _bitBuffer = 0;
     private int _bitCount = 0;
@@ -68,22 +68,16 @@ public sealed class JpegBitReader(Stream stream) : IBitReader
         return true;
     }
 
-    public int ReadBits(int n, bool signed = true)
+    public int ReadBits(int n)
     {
         if (n <= 0 || n > 32) return -1;
 
-        int result = 0;
-        for (int i = 0; i < n; i++)
+        var result = 0;
+        for (var i = 0; i < n; i++)
         {
-            int bit = ReadBit();
+            var bit = ReadBit();
             if (bit < 0) return -1;
             result = (result << 1) | bit;
-        }
-
-        if (signed)
-        {
-            if (n < 32 && (result & (1 << (n - 1))) != 0)
-                result |= -1 << n;
         }
 
         return result;
@@ -97,21 +91,14 @@ public sealed class JpegBitReader(Stream stream) : IBitReader
         return true;
     }
 
-    public int PeekBits(int n, bool signed = true)
+    public int PeekBits(int n)
     {
         if (n <= 0 || n > 32) return -1;
 
         if (_bitCount < n)
             return -1;
 
-        var result = (_bitBuffer >> (_bitCount - n)) & ((1 << n) - 1);
-        if (signed)
-        {
-            if (n < 32 && (result & (1 << (n - 1))) != 0)
-                result |= -1 << n;
-        }
-
-        return result;
+        return (_bitBuffer >> (_bitCount - n)) & ((1 << n) - 1);
 
     }
 

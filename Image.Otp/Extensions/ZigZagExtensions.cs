@@ -1,4 +1,6 @@
-﻿namespace Image.Otp.Core.Extensions;
+﻿using System.Runtime.CompilerServices;
+
+namespace Image.Otp.Core.Extensions;
 
 public static class ZigZagExtensions
 {
@@ -47,10 +49,6 @@ public static class ZigZagExtensions
         return block;
     }
 
-    public static int ExtendSign(int value, int bitCount)
-    {
-        if (bitCount == 0) return 0;
-        var vt = 1 << bitCount - 1;
-        return value < vt ? value - ((1 << bitCount) - 1) : value;
-    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int Extend(int v, int nbits) => v - ((((v + v) >> nbits) - 1) & ((1 << nbits) - 1));
 }

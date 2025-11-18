@@ -1,5 +1,6 @@
 ﻿using Image.Otp.Abstractions;
 using Image.Otp.Core.Primitives;
+using System.Collections.Concurrent;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -10,15 +11,16 @@ namespace Image.Otp.Core.Pixels;
 
 public unsafe class Rgb24Processor : IPixelProcessor<Rgb24>
 {
-    public Rgb24 FromYCbCr(byte y, byte cb, byte cr)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Rgb24 YCbCrToRgb24(byte y, byte cb, byte cr)
     {
         double Yd = y;
         double Cbd = cb - 128.0;
         double Crd = cr - 128.0;
 
-        int r = (int)Math.Round(Yd + 1.402 * Crd);
-        int g = (int)Math.Round(Yd - 0.344136 * Cbd - 0.714136 * Crd);
-        int b = (int)Math.Round(Yd + 1.772 * Cbd);
+        var r = (int)Math.Round(Yd + 1.402 * Crd);
+        var g = (int)Math.Round(Yd - 0.344136 * Cbd - 0.714136 * Crd);
+        var b = (int)Math.Round(Yd + 1.772 * Cbd);
 
         r = Math.Clamp(r, 0, 255);
         g = Math.Clamp(g, 0, 255);
@@ -27,12 +29,19 @@ public unsafe class Rgb24Processor : IPixelProcessor<Rgb24>
         return new Rgb24((byte)r, (byte)g, (byte)b);
     }
 
+    public Rgb24 FromYCbCr(byte y, byte cb, byte cr) => YCbCrToRgb24(y, cb, cr);
+
     public void FromYCbCr(float* y, float* cb, float* cr, Span<Rgb24> output)
     {
         var i = 0;
 
         if (Avx.IsSupported)
         {
+            //fixed (Rgb24* outputPtr = output)
+            //{
+            //    FromYCbCrParallel(y, cb, cr, outputPtr, output.Length);
+            //}
+
             var zero = Vector256.Create(0f);
             var c128 = Vector256.Create(128f);
             var maxColor = Vector256.Create(255f);
@@ -42,6 +51,7 @@ public unsafe class Rgb24Processor : IPixelProcessor<Rgb24>
             var f0_714 = Vector256.Create(-0.714136f);
 
             var vecCount = Vector256<float>.Count;
+
             for (; i < output.Length - vecCount; i += vecCount)
             {
                 var yVec = Vector256.Load(y + i);
@@ -77,6 +87,60 @@ public unsafe class Rgb24Processor : IPixelProcessor<Rgb24>
 
         for (; i < output.Length; i++)
             output[i] = FromYCbCr(ClampToByte(y[i]), ClampToByte(cb[i]), ClampToByte(cr[i]));
+    }
+
+    private static readonly ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = Environment.ProcessorCount };
+    private static void FromYCbCrParallel(float* y, float* cb, float* cr, Rgb24* output, int length)
+    {
+        var partitions = Partitioner.Create(0, length, rangeSize: 5000);
+        Parallel.ForEach(partitions, parallelOptions, (part) =>
+        {
+            var zero = Vector256.Create(0f);
+            var c128 = Vector256.Create(128f);
+            var maxColor = Vector256.Create(255f);
+            var f1_402 = Vector256.Create(1.402f);
+            var f1_772 = Vector256.Create(1.772f);
+            var f0_344 = Vector256.Create(-0.344136f);
+            var f0_714 = Vector256.Create(-0.714136f);
+
+            var vecCount = Vector256<float>.Count;
+
+            var i = part.Item1;
+            for (; i < part.Item2 - vecCount; i += vecCount)
+            {
+                var yVec = Vector256.Load(y + i);
+                var cbVec = Vector256.Load(cb + i);
+                var crVec = Vector256.Load(cr + i);
+
+                yVec = ClampToByte(yVec);
+                cbVec = ClampToByte(cbVec);
+                crVec = ClampToByte(crVec);
+
+                cbVec = Avx.Subtract(cbVec, c128);
+                crVec = Avx.Subtract(crVec, c128);
+
+                var rFloat = Avx.Add(yVec, Avx.Multiply(crVec, f1_402));
+                var bFloat = Avx.Add(yVec, Avx.Multiply(cbVec, f1_772));
+                var gFloat = Avx.Add(yVec, Avx.Add(
+                    Avx.Multiply(cbVec, f0_344),
+                    Avx.Multiply(crVec, f0_714)));
+
+                rFloat = Avx.Min(Avx.Max(rFloat, zero), maxColor);
+                gFloat = Avx.Min(Avx.Max(gFloat, zero), maxColor);
+                bFloat = Avx.Min(Avx.Max(bFloat, zero), maxColor);
+
+                for (int j = 0; j < vecCount; j++)
+                {
+                    var r = (byte)rFloat.GetElement(j);
+                    var g = (byte)gFloat.GetElement(j);
+                    var b = (byte)bFloat.GetElement(j);
+                    output[j + i] = new Rgb24(r, g, b);
+                }
+            }
+
+            for (; i < part.Item2; i++)
+                output[i] = YCbCrToRgb24(ClampToByte(y[i]), ClampToByte(cb[i]), ClampToByte(cr[i]));
+        });
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
